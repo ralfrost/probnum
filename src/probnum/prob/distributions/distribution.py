@@ -368,3 +368,6 @@ class Distribution:
         """
         raise NotImplementedError(
             "Reshaping not implemented for distribution of type: {}.".format(self.__class__.__name__))
+
+    def __getitem__(self, key):
+        raise NotImplementedError

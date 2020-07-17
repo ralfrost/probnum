@@ -225,6 +225,9 @@ class RandomVariable:
         combined_rv = RandomVariable(distribution=op(self.distribution, other_rv.distribution))
         return combined_rv
 
+    def __getitem__(self, key):
+        return RandomVariable(distribution=self.distribution[key])
+
     def __add__(self, other):
         return self._rv_from_binary_operation(other=other, op=operator.add)
 
