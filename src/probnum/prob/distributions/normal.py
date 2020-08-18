@@ -514,6 +514,7 @@ class _MatrixvariateNormal(Normal):
     def logcdf(self, x):
         raise NotImplementedError
 
+    
     def sample(self, size=()):
         ravelled = scipy.stats.multivariate_normal.rvs(
             mean=self.mean().ravel(),
@@ -579,9 +580,19 @@ class _OperatorvariateNormal(Normal):
         return mean, cov
 
     def pdf(self, x):
-        raise NotImplementedError
+        mean = self.mean()
+        cov = self.cov()
+
 
     def logpdf(self, x):
+        mean = self.mean()
+        mean_dim = self._mean_dim
+        cov = self.cov()
+        dev = x-mean
+        _LOG_2PI = np.log(2 * np.pi)
+        L_V_inv = cov.A.T
+        L_W_inv = cov.B.T
+        return -0.5 * (mean
         raise NotImplementedError
 
     def cdf(self, x):
@@ -589,8 +600,45 @@ class _OperatorvariateNormal(Normal):
 
     def logcdf(self, x):
         raise NotImplementedError
+    
+    def sample(self, sel=1, size=()):
+        mean = self.mean()
+        cov = self.cov()
 
-    def sample(self, size=()):
+        if isinstance(size, (int, np.integer)):
+            shape = [size]
+        else:
+            shape = size
+
+        final_shape = list(shape)
+        final_shape.extend(list(mean.shape))
+        print("final shape = ",final_shape)
+
+        #np.random.seed(3)
+
+        randoms = np.random.standard_normal(final_shape)
+        if sel == 1:
+            print("You are using first new method.")
+            samples_vector = mean + self._stacked_matvec_ndarray(cov, randoms)
+        else:
+            print("You are using second new method.")
+            samples_vector = mean + self._stacked_matvec_linop(cov, randoms)
+        return samples_vector
+
+    def _stacked_matvec_ndarray(self, cov, vec_stack):
+        """ Using (A (x) B)vec(X) = vec(AXB^T). vec_stack and output are actually stacks of matrices."""
+        V = cov.A.todense()
+        W_T = cov.B.T.todense()
+        return V @ vec_stack @ W_T
+
+    def _stacked_matvec_linop(self, cov, vec_stack):
+        """ Using (A (x) B)vec(X) = vec(AXB^T). vec_stack and output are actually stacks of matrices."""
+        V = cov.A
+        W = cov.B
+        return [V.matmat(W.matmat(X.T).T) for X in vec_stack]
+    
+    def sample_test(self, size=()):
+        print("You are using the old method.")
         mean, cov = self._params_todense()
         samples_ravelled = scipy.stats.multivariate_normal.rvs(
             mean=mean.ravel(), cov=cov, size=size, random_state=self.random_state
