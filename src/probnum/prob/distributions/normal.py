@@ -11,6 +11,7 @@ import numpy as np
 import scipy.stats
 import scipy.sparse
 import scipy._lib._util
+import scipy.linalg
 
 from probnum.linalg import linops
 from probnum.prob.distributions.distribution import Distribution
@@ -579,21 +580,52 @@ class _OperatorvariateNormal(Normal):
             cov = self.cov()
         return mean, cov
 
-    def pdf(self, x):
-        mean = self.mean()
+    def _cholesky_factors(self, zeros=True):
+        '''Returns the lower left cholesky factors of the covariance. Set zeros to True if the upper part of the matrices should be zeros.'''
         cov = self.cov()
+        if zeros:
+            return (scipy.linalg.cholesky(cov.A.todense()), scipy.linalg.cholesky(cov.B.todense()))
+        else:
+            (L_V, lower)=scipy.linalg.cho_factor(cov.A.todense(), lower=True)    
+            (L_W, lower)=scipy.linalg.cho_factor(cov.B.todense(), lower=True)    
+            return (L_V, L_W)
 
+    def pdf(self, x):
+        (L_V, L_W) = self._cholesky_factors(zeros=False)
+        return np.exp(self._logpdf((L_V,L_W), x))
 
     def logpdf(self, x):
+        (L_V, L_W) = self._cholesky_factors(zeros=False)
+        return self._logpdf((L_V,L_W), x)
+
+    def _logpdf(self, cov_factors , x):
+        (L_V,L_W) = cov_factors
         mean = self.mean()
         mean_dim = self._mean_dim
-        cov = self.cov()
         dev = x-mean
-        _LOG_2PI = np.log(2 * np.pi)
-        L_V_inv = cov.A.T
-        L_W_inv = cov.B.T
-        return -0.5 * (mean
-        raise NotImplementedError
+        ln_2pi = np.log(2 * np.pi)
+
+        det_L_V = np.einsum('ii', L_V)
+        det_L_W = np.einsum('ii', L_W)
+        ln_detcov = cov.A.shape[0]*np.log(det_L_V)+cov.B.shape[1]*np.log(det_L_W)
+        
+        Q = scipy.linalg.cho_solve((cov.A.todense(),True),dev)
+        R = scipy.linalg.cho_solve((cov.B.todense(),True),Q.T,overwrite_b=True)
+        y = np.dot(dev,T)
+        #y = self._devT_covINV_dev(dev,cov)
+        return -0.5 * (mean*ln_2pi+ln_detcov+y)
+
+    def _devT_covINV_dev(self, dev, cov):
+        '''
+        Calculates dev.T*cov^-1+dev by solving linear equation systems assuming that cov is a kronecker-product represented by two lower left triangular matrices as a result of cholesky
+        '''
+        L_V = cov.A.todense()
+        L_W = cov.B.todense()
+        T = np.linalg.solve_triangular(L_V, dev, trans=0, lower=True, overwrite_b=False)
+        S = np.linalg.solve_triangular(L_V, T, trans=1, lower=False, overwrite_b=True)
+        R = np.linalg.solve_triangular(L_W, S, trans=0, lower=True, overwrite_b=True)
+        Q = np.linalg.solve_triangular(L_W, R, trans=1, lower=False, overwrite_b=True)
+        return np.dot(Q,dev)
 
     def cdf(self, x):
         raise NotImplementedError
@@ -601,9 +633,9 @@ class _OperatorvariateNormal(Normal):
     def logcdf(self, x):
         raise NotImplementedError
     
-    def sample(self, sel=1, size=()):
+    def sample(self, size=(), sel=1):
+        (L_V, L_W) = self._cholesky_factors(zeros=True)
         mean = self.mean()
-        cov = self.cov()
 
         if isinstance(size, (int, np.integer)):
             shape = [size]
@@ -619,23 +651,21 @@ class _OperatorvariateNormal(Normal):
         randoms = np.random.standard_normal(final_shape)
         if sel == 1:
             print("You are using first new method.")
-            samples_vector = mean + self._stacked_matvec_ndarray(cov, randoms)
+            samples_vector = mean + self._stacked_matvec_ndarray((L_V, L_W), randoms)
         else:
             print("You are using second new method.")
-            samples_vector = mean + self._stacked_matvec_linop(cov, randoms)
+            samples_vector = mean + self._stacked_matvec_linop((L_V, L_W), randoms)
         return samples_vector
 
-    def _stacked_matvec_ndarray(self, cov, vec_stack):
+    def _stacked_matvec_ndarray(self, cov_factors, vec_stack):
         """ Using (A (x) B)vec(X) = vec(AXB^T). vec_stack and output are actually stacks of matrices."""
-        V = cov.A.todense()
-        W_T = cov.B.T.todense()
-        return V @ vec_stack @ W_T
+        (L_V,L_W) = cov_factors
+        return L_V @ vec_stack @ L_W.T 
 
-    def _stacked_matvec_linop(self, cov, vec_stack):
+    def _stacked_matvec_linop(self, cov_factors, vec_stack):
         """ Using (A (x) B)vec(X) = vec(AXB^T). vec_stack and output are actually stacks of matrices."""
-        V = cov.A
-        W = cov.B
-        return [V.matmat(W.matmat(X.T).T) for X in vec_stack]
+        (L_V,L_W) = cov_factors
+        return [L_V.matmat(L_W.matmat(X.T).T) for X in vec_stack]
     
     def sample_test(self, size=()):
         print("You are using the old method.")
