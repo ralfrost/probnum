@@ -580,7 +580,7 @@ class _OperatorvariateNormal(Normal):
             cov = self.cov()
         return mean, cov
 
-    def _cholesky_factors(self, zeros=True):
+    def _cov_cholesky(self, zeros=True):
         '''Returns the lower left cholesky factors of the covariance. Set zeros to True if the upper part of the matrices should be zeros.'''
         cov = self.cov()
         if zeros:
@@ -591,29 +591,34 @@ class _OperatorvariateNormal(Normal):
             return (L_V, L_W)
 
     def pdf(self, x):
-        (L_V, L_W) = self._cholesky_factors(zeros=False)
-        return np.exp(self._logpdf((L_V,L_W), x))
+        cov_factors = self._cov_cholesky(zeros=False)
+        return np.exp( self._calculate_logpdf(cov_factors, x) )
 
     def logpdf(self, x):
-        (L_V, L_W) = self._cholesky_factors(zeros=False)
-        return self._logpdf((L_V,L_W), x)
+        cov_factors = self._cov_cholesky(zeros=False)
+        return self._calculate_logpdf(cov_factors, x)
 
-    def _logpdf(self, cov_factors , x):
+    def _calculate_logpdf(self, cov_factors, x):
         (L_V,L_W) = cov_factors
-        mean = self.mean()
-        mean_dim = self._mean_dim
-        dev = x-mean
+        (m,n) = self.mean().shape
+        dev = x-self.mean()
         ln_2pi = np.log(2 * np.pi)
+        det_L_V = np.trace(L_V) #determinant of triangular matrices is equal to trace
+        det_L_W = np.trace(L_W) 
+        ln_detcov = m*np.log(det_L_V) + n*np.log(det_L_W)
+        dev_reshaped = self._reshape_from_vec( dev, (n,m) )
+        Q = scipy.linalg.cho_solve((L_W, True), dev_reshaped)
+        R = scipy.linalg.cho_solve((L_V, True), Q.T, overwrite_b=True)
+        print("dev = ",dev)
+        print("R = ",R)
+        y = np.dot(dev.reshape((m*n)), R.reshape((m*n)))
 
-        det_L_V = np.einsum('ii', L_V)
-        det_L_W = np.einsum('ii', L_W)
-        ln_detcov = cov.A.shape[0]*np.log(det_L_V)+cov.B.shape[1]*np.log(det_L_W)
-        
-        Q = scipy.linalg.cho_solve((cov.A.todense(),True),dev)
-        R = scipy.linalg.cho_solve((cov.B.todense(),True),Q.T,overwrite_b=True)
-        y = np.dot(dev,T)
         #y = self._devT_covINV_dev(dev,cov)
-        return -0.5 * (mean*ln_2pi+ln_detcov+y)
+        return -0.5 * (self._mean_dim*ln_2pi + ln_detcov + y)
+    
+    def _reshape_from_vec(self, A, shape):
+        '''Returns matrix of shape retrieved of the vectorization of A. Works only for 2D-arrays!'''
+        return A.T.reshape( (shape[1],shape[0]) ).T
 
     def _devT_covINV_dev(self, dev, cov):
         '''
@@ -633,39 +638,43 @@ class _OperatorvariateNormal(Normal):
     def logcdf(self, x):
         raise NotImplementedError
     
-    def sample(self, size=(), sel=1):
-        (L_V, L_W) = self._cholesky_factors(zeros=True)
-        mean = self.mean()
+    def sample(self, val=((),1)):
+        (size, sel) = val
+        cov_factors = self._cov_cholesky(zeros=True)
+        (m,n) = self.mean().shape
 
         if isinstance(size, (int, np.integer)):
             shape = [size]
         else:
-            shape = size
+            shape = list(size)
 
-        final_shape = list(shape)
-        final_shape.extend(list(mean.shape))
-        print("final shape = ",final_shape)
-
-        #np.random.seed(3)
-
-        randoms = np.random.standard_normal(final_shape)
-        if sel == 1:
-            print("You are using first new method.")
-            samples_vector = mean + self._stacked_matvec_ndarray((L_V, L_W), randoms)
+        shape.extend([n,m])
+        print("randoms_shape = ",shape)
+        randoms = np.random.standard_normal(shape)
+        if sel == 1 and isinstance(cov_factors[0], np.ndarray):
+            stacked_product = self._stacked_matvec_ndarray(cov_factors, randoms)
         else:
-            print("You are using second new method.")
-            samples_vector = mean + self._stacked_matvec_linop((L_V, L_W), randoms)
-        return samples_vector
+            stacked_product = self._stacked_matvec_linop(cov_factors, randoms)
+            print("returner ", stacked_product)
+            print("transp = ",self._stacked_transpose(stacked_product))
+        return self.mean() + self._stacked_transpose(stacked_product)
 
     def _stacked_matvec_ndarray(self, cov_factors, vec_stack):
         """ Using (A (x) B)vec(X) = vec(AXB^T). vec_stack and output are actually stacks of matrices."""
+        print("You are using method for ndarrays.")
         (L_V,L_W) = cov_factors
-        return L_V @ vec_stack @ L_W.T 
+        return L_W @ vec_stack @ L_V.T 
 
     def _stacked_matvec_linop(self, cov_factors, vec_stack):
         """ Using (A (x) B)vec(X) = vec(AXB^T). vec_stack and output are actually stacks of matrices."""
+        print("You are using method for linear operators.")
         (L_V,L_W) = cov_factors
-        return [L_V.matmat(L_W.matmat(X.T).T) for X in vec_stack]
+        return np.array([L_W @ X @ L_V.T for X in vec_stack])
+    
+    def _stacked_transpose(self, A):
+        n = len(A.shape)
+        order = np.append(np.arange(n-2),[n-1,n-2])
+        return np.transpose(A, axes=order)
     
     def sample_test(self, size=()):
         print("You are using the old method.")
