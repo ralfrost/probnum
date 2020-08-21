@@ -584,7 +584,7 @@ class _OperatorvariateNormal(Normal):
         '''Returns the lower left cholesky factors of the covariance. Set zeros to True if the upper part of the matrices should be zeros.'''
         cov = self.cov()
         if zeros:
-            return (scipy.linalg.cholesky(cov.A.todense()), scipy.linalg.cholesky(cov.B.todense()))
+            return (scipy.linalg.cholesky(cov.A.todense(),lower=True), scipy.linalg.cholesky(cov.B.todense(),lower=True))
         else:
             (L_V, lower)=scipy.linalg.cho_factor(cov.A.todense(), lower=True)    
             (L_W, lower)=scipy.linalg.cho_factor(cov.B.todense(), lower=True)    
@@ -600,6 +600,9 @@ class _OperatorvariateNormal(Normal):
 
     def _calculate_logpdf(self, cov_factors, x):
         (L_V,L_W) = cov_factors
+
+        #test
+        print(np.allclose(np.tril(L_V)@np.tril(L_V).T-self.cov().A,zeros(self.cov().A.shape)))
         (m,n) = self.mean().shape
         dev = x-self.mean()
         ln_2pi = np.log(2 * np.pi)
@@ -611,7 +614,7 @@ class _OperatorvariateNormal(Normal):
         R = scipy.linalg.cho_solve((L_V, True), Q.T, overwrite_b=True)
         print("dev = ",dev)
         print("R = ",R)
-        y = np.dot(dev.reshape((m*n)), R.reshape((m*n)))
+        y = np.dot(dev.reshape((m*n)), R.T.reshape((m*n)))
 
         #y = self._devT_covINV_dev(dev,cov)
         return -0.5 * (self._mean_dim*ln_2pi + ln_detcov + y)
@@ -641,6 +644,7 @@ class _OperatorvariateNormal(Normal):
     def sample(self, val=((),1)):
         (size, sel) = val
         cov_factors = self._cov_cholesky(zeros=True)
+        print("Faktoren = ", cov_factors)
         (m,n) = self.mean().shape
 
         if isinstance(size, (int, np.integer)):
@@ -655,8 +659,6 @@ class _OperatorvariateNormal(Normal):
             stacked_product = self._stacked_matvec_ndarray(cov_factors, randoms)
         else:
             stacked_product = self._stacked_matvec_linop(cov_factors, randoms)
-            print("returner ", stacked_product)
-            print("transp = ",self._stacked_transpose(stacked_product))
         return self.mean() + self._stacked_transpose(stacked_product)
 
     def _stacked_matvec_ndarray(self, cov_factors, vec_stack):
