@@ -601,39 +601,19 @@ class _OperatorvariateNormal(Normal):
     def _calculate_logpdf(self, cov_factors, x):
         (L_V,L_W) = cov_factors
 
-        #test
-        print(np.allclose(np.tril(L_V)@np.tril(L_V).T-self.cov().A,zeros(self.cov().A.shape)))
         (m,n) = self.mean().shape
         dev = x-self.mean()
         ln_2pi = np.log(2 * np.pi)
         det_L_V = np.trace(L_V) #determinant of triangular matrices is equal to trace
         det_L_W = np.trace(L_W) 
         ln_detcov = m*np.log(det_L_V) + n*np.log(det_L_W)
-        dev_reshaped = self._reshape_from_vec( dev, (n,m) )
-        Q = scipy.linalg.cho_solve((L_W, True), dev_reshaped)
-        R = scipy.linalg.cho_solve((L_V, True), Q.T, overwrite_b=True)
+        dev_reshaped = dev.T.reshape(m,n)
+        Q = scipy.linalg.cho_solve((L_V, True), dev_reshaped)
+        R = scipy.linalg.cho_solve((L_W, True), Q.T, overwrite_b=True)
         print("dev = ",dev)
         print("R = ",R)
-        y = np.dot(dev.reshape((m*n)), R.T.reshape((m*n)))
-
-        #y = self._devT_covINV_dev(dev,cov)
+        y = np.dot(dev.T.ravel(), R.ravel())
         return -0.5 * (self._mean_dim*ln_2pi + ln_detcov + y)
-    
-    def _reshape_from_vec(self, A, shape):
-        '''Returns matrix of shape retrieved of the vectorization of A. Works only for 2D-arrays!'''
-        return A.T.reshape( (shape[1],shape[0]) ).T
-
-    def _devT_covINV_dev(self, dev, cov):
-        '''
-        Calculates dev.T*cov^-1+dev by solving linear equation systems assuming that cov is a kronecker-product represented by two lower left triangular matrices as a result of cholesky
-        '''
-        L_V = cov.A.todense()
-        L_W = cov.B.todense()
-        T = np.linalg.solve_triangular(L_V, dev, trans=0, lower=True, overwrite_b=False)
-        S = np.linalg.solve_triangular(L_V, T, trans=1, lower=False, overwrite_b=True)
-        R = np.linalg.solve_triangular(L_W, S, trans=0, lower=True, overwrite_b=True)
-        Q = np.linalg.solve_triangular(L_W, R, trans=1, lower=False, overwrite_b=True)
-        return np.dot(Q,dev)
 
     def cdf(self, x):
         raise NotImplementedError
@@ -652,26 +632,29 @@ class _OperatorvariateNormal(Normal):
         else:
             shape = list(size)
 
-        shape.extend([n,m])
+
+        shape_T = shape.copy()
+        shape.extend([m,n])
+        shape_T.extend([n,m])
         print("randoms_shape = ",shape)
         randoms = np.random.standard_normal(shape)
         if sel == 1 and isinstance(cov_factors[0], np.ndarray):
             stacked_product = self._stacked_matvec_ndarray(cov_factors, randoms)
         else:
             stacked_product = self._stacked_matvec_linop(cov_factors, randoms)
-        return self.mean() + self._stacked_transpose(stacked_product)
+        return self.mean() + self._stacked_transpose(stacked_product.reshape(shape_T))
 
     def _stacked_matvec_ndarray(self, cov_factors, vec_stack):
         """ Using (A (x) B)vec(X) = vec(AXB^T). vec_stack and output are actually stacks of matrices."""
         print("You are using method for ndarrays.")
         (L_V,L_W) = cov_factors
-        return L_W @ vec_stack @ L_V.T 
+        return L_V @ vec_stack @ L_W.T 
 
     def _stacked_matvec_linop(self, cov_factors, vec_stack):
         """ Using (A (x) B)vec(X) = vec(AXB^T). vec_stack and output are actually stacks of matrices."""
         print("You are using method for linear operators.")
         (L_V,L_W) = cov_factors
-        return np.array([L_W @ X @ L_V.T for X in vec_stack])
+        return np.array([L_V @ X @ L_W.T for X in vec_stack])
     
     def _stacked_transpose(self, A):
         n = len(A.shape)
