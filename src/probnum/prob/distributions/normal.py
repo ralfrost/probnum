@@ -580,88 +580,68 @@ class _OperatorvariateNormal(Normal):
             cov = self.cov()
         return mean, cov
 
-    def _cov_cholesky(self, zeros=True):
-        '''Returns the lower left cholesky factors of the covariance. Set zeros to True if the upper part of the matrices should be zeros.'''
-        cov = self.cov()
-        if zeros:
-            L_V = scipy.linalg.cholesky(cov.A.todense(),lower=True)  
-            L_W = scipy.linalg.cholesky(cov.B.todense(),lower=True)
-        else:
-            (L_V, lower)=scipy.linalg.cho_factor(cov.A.todense(), lower=True)    
-            (L_W, lower)=scipy.linalg.cho_factor(cov.B.todense(), lower=True)    
-        return (L_V, L_W)
-
-    def _cov_svd(self):
-        '''Returns the lower left cholesky factors of the covariance. Set zeros to True if the upper part of the matrices should be zeros.'''
-        cov = self.cov()
-        (u_V, s_V, v_V) = np.linalg.svd(cov.A.todense() )
-        (u_W, s_W, v_W) = np.linalg.svd(cov.B.todense() )
-        V_factor = u_V * np.sqrt(s_V) @ v_V
-        W_factor = u_W * np.sqrt(s_W) @ v_W
-        return (V_factor, W_factor)
-
-    def pdf(self, x):
-        cov_factors = self._cov_cholesky(zeros=False)
-        return np.exp( self._calculate_logpdf(cov_factors, x) )
-
-    def classic_pdf(self, x, method='cholesky'):
-        (m,n) = self.mean().shape
-        cov_dense = self.cov().todense()
-        dev = x - self.mean()
-        dev = dev.T.ravel()
-        cov_inv = np.linalg.inv(cov_dense)
-        cov_det = np.linalg.det(cov_dense)
-        print("classic logabsdet = ",np.log(cov_det))
-        maha = dev @ cov_inv @ dev
-        return np.exp( -0.5*(m*n*np.log(2*np.pi) + np.log(cov_det) + maha))
+    def pdf(self, x, method='cholesky'):
+        return np.exp( self.logpdf(x, method) )
 
     def logpdf(self, x, method='cholesky'):
-        cov_factors = self._cov_cholesky(zeros=False)
-        return self._calculate_logpdf(cov_factors, x)
-
-    def _calculate_logpdf(self, cov_factors, x, method='cholesky'):
-        (L_V,L_W) = cov_factors
-        (m,n) = self.mean().shape
-        print("m = ",m,",n = ",n)
-        
+        dev = x-self.mean()
+        # TODO: method should be chosen based on availability of decomposition factors and if cov product of linops or ndarray
         if method == 'cholesky':
-            cov_factors = self._cov_cholesky(zeros=True)
+            print("###Chololo###")
+            (logdet_cov, maha) = self._logpdf_calc_chol(dev)
         elif method == 'svd':
-            cov_factors = self._cov_svd()
+            print("###SVD###")
+            (logdet_cov, maha) = self._logpdf_calc_svd(dev)
         else:
             raise ValueError("method must be either 'cholesky' or 'svd'.")
-        # TODO: Once efficient determinant using cholesky factors is implemented,
-        # use instead: ln_det_cov = self.cov().logabsdet()
-        print("Logabsdet_chol = ",self._chol_logabsdet(L_V,L_W, m, n))
-        ln_det_cov = self._chol_logabsdet(L_V,L_W, n, m)
-        print("Logabsdet_chol swapped = ",ln_det_cov)
-        print("unefficient logabsdet  = ", self.cov().logabsdet())
-        print("numpy logabsdet  = ", np.log(np.linalg.det(self.cov().todense())))
         # normalizing constant
-        ln_2pi = np.log(2 * np.pi)
-        nconst = m*n*ln_2pi + ln_det_cov
-        # Mahalanobis distance 
-        dev = x-self.mean()
-        maha = self._mahaldist(dev, L_V, L_W)
-        return -0.5*(nconst + maha)
+        log2pi = np.log(2 * np.pi)
+        normconst = np.prod(self.mean().shape)*log2pi + logdet_cov
+        return -0.5*(normconst + maha)
 
-    def _chol_logabsdet(self, L_V, L_W, m, n):
-    # Efficiently calculates determinant of Kronecker(V,W) using cholesky factors
+    def _logpdf_calc_chol(self, dev):
+        cov_cholfactors = (
+            scipy.linalg.cholesky(self.cov().A.todense(),lower=True),  
+            scipy.linalg.cholesky(self.cov().B.todense(),lower=True)
+        )
+        logdet_cov = self._chol_logabsdet(cov_cholfactors) 
+        maha = self._chol_mahaldist(dev, cov_cholfactors)
+        return (logdet_cov, maha)     
+        
+    def _logpdf_calc_svd(self, dev):
+        covA_svdfactors = np.linalg.svd(self.cov().A.todense())
+        covB_svdfactors = np.linalg.svd(self.cov().B.todense())
+        logdet_cov = self._svd_logabsdet(covA_svdfactors, covB_svdfactors)
+        maha = self._svd_mahaldist(dev, covA_svdfactors, covB_svdfactors)
+        return (logdet_cov, maha)     
+
+    def _chol_logabsdet(self, cov_cholfactors):
+    """ Efficiently calculates determinant of Kronecker(V,W) using cholesky factors """
     # TODO: obsolete once logabsdet() in Kronecker class uses cholesky factors
-        det_L_V = np.sum(np.log(np.diag(L_V))) #determinant of triangular matrices is equal to product of entries of diagonal
-        det_L_W = np.sum(np.log(np.diag(L_W)))
-        det_V = 2*m*det_L_V 
-        det_W = 2*n*det_L_W
-        print("m = ",m,",n = ",n)
-        return det_V+det_W
+        mean_shape = self.mean().shape
+        det_L_A = np.sum(np.log(np.diag(cov_cholfactors[0]))) #determinant of triangular matrices is equal to product of entries of diagonal and det of matrix is equal to product of det of its cholesky factor
+        det_L_B = np.sum(np.log(np.diag(cov_cholfactors[1])))
+        return 2*mean_shape[1]*det_L_A + 2*mean_shape[0]*det_L_B
 
-    def _mahaldist(self, dev, L_V, L_W):
-    # Calculates vec(dev.T) @ Kronecker(V,W)^-1 @ vec(dev) using cholesky factors instead of inverting V and W
-        Q = scipy.linalg.cho_solve((L_V, True), dev) #V*Q=dev => V^-1*dev=Q
-        R_T = scipy.linalg.cho_solve((L_W, True), Q.T, overwrite_b=True) #W*R.T=Q.T => Q*W.T^-1=R
-        print("dev = ",dev)
-        print("R.T = ",R_T)
-        return np.dot(dev.ravel(), R_T.T.ravel())
+    def _svd_logabsdet(self, covA_svdfactors, covB_svdfactors):
+    """ Efficiently calculates determinant of Kronecker(V,W) using cholesky factors """
+    # TODO: obsolete once logabsdet() in Kronecker class uses svd factors
+        mean_shape = self.mean().shape
+        det_S_A = np.sum(np.log(covA_svdfactors[1])) #determinant of matrix is equal to product of singular values
+        det_S_B = np.sum(np.log(covB_svdfactors[1]))
+        return mean_shape[1]*det_S_A + mean_shape[0]*det_S_B
+
+    def _chol_mahaldist(self, dev, cov_cholfactors):
+    """ Calculates mahalanobis distance vec(dev.T) @ Kronecker(A,B)^-1 @ vec(dev) using cholesky factors instead of inverting A and B """
+        Q = scipy.linalg.cho_solve((cov_cholfactors[0], True), dev) #A*Q=dev => A^-1*dev=Q
+        R_T = scipy.linalg.cho_solve((cov_cholfactors[1], True), Q.T, overwrite_b=True) #B*R.T=Q.T => Q*B.T^-1=R
+        return dev.ravel() @ R_T.T.ravel()
+
+    def _svd_mahaldist(self, dev,  covA_svdfactors, covB_svdfactors):
+    """ Calculates mahalanobis distance vec(dev.T) @ Kronecker(A,B)^-1 @ vec(dev) using svd factors to calculate A^-1 and B^-1 """
+        covA_inv = covA_svdfactors[0] * (1/covA_svdfactors[1]) @ covA_svdfactors[0].T
+        covB_inv = covB_svdfactors[0] * (1/covB_svdfactors[1]) @ covB_svdfactors[0].T
+        return dev.ravel() @ (covA_inv @ dev @ covB_inv.T).ravel()
 
     def cdf(self, x):
         raise NotImplementedError
@@ -669,55 +649,39 @@ class _OperatorvariateNormal(Normal):
     def logcdf(self, x):
         raise NotImplementedError
     
-    def sample(self, val=((),1), method='cholesky'):
-        (size, sel) = val
-
+    def sample(self, size, method='cholesky'):
         if method == 'cholesky':
             print("Using Cholesky")
-            cov_factors = self._cov_cholesky(zeros=True)
+            cov_factors = self._chol_cov_factors()
         elif method == 'svd':
             print("Using svd")
-            cov_factors = self._cov_svd()
+            cov_factors = self._svd_cov_factors()
         else:
             raise ValueError("method must be either 'cholesky' or 'svd'.")
-
-        #print("Faktoren = ", cov_factors)
-        (m,n) = self.mean().shape
 
         if isinstance(size, (int, np.integer)):
             shape = [size]
         else:
             shape = list(size)
-        shape.extend([m,n])
-
+        shape.extend(list(self.mean().shape))
         randoms = np.random.standard_normal(shape)
-        '''
-        if sel == 1 and isinstance(cov_factors[0], np.ndarray):
-            stacked_product = self._stacked_matvec_ndarray(cov_factors, randoms)
-        else:
-            stacked_product = self._stacked_matvec_linop(cov_factors, randoms)
-        return self.mean() + stacked_product
-        '''
         return self.mean() + cov_factors[0] @ randoms @ cov_factors[1].T
 
-    def _stacked_matvec_ndarray(self, cov_factors, vec_stack):
-        """ Using (A (x) B)vec(X) = vec(AXB^T). vec_stack and output are actually stacks of matrices."""
-        print("You are using method for ndarrays.")
-        (L_V,L_W) = cov_factors
-        return L_V @ vec_stack @ L_W.T 
+    def _chol_cov_factors(self):
+        """ Returns factors to decompose cov into a product U*U.T using cholesky decomposition """
+        covA_factor = scipy.linalg.cholesky(self.cov().A.todense(),lower=True),  
+        covB_factor = scipy.linalg.cholesky(self.cov().B.todense(),lower=True)
+        return (covA_factor, covB_factor)
 
-    def _stacked_matvec_linop(self, cov_factors, vec_stack):
-        """ Using (A (x) B)vec(X) = vec(AXB^T). vec_stack and output are actually stacks of matrices."""
-        print("You are using method for linear operators.")
-        (L_V,L_W) = cov_factors
-        return np.array([L_V @ X @ L_W.T for X in vec_stack])
-    
-    def _stacked_transpose(self, A):
-        n = len(A.shape)
-        order = np.append(np.arange(n-2),[n-1,n-2])
-        return np.transpose(A, axes=order)
-    
-    def sample_test(self, size=()):
+    def _svd_cov_factors(self):
+        """ Returns factors to decompose cov into a product U*U.T using svd decomposition """
+        covA_svdfactors = np.linalg.svd(self.cov().A.todense() )
+        covB_svdfactors = np.linalg.svd(self.cov().B.todense() )
+        covA_factor = covA_svdfactors[0] * np.sqrt(covA_svdfactors[1]) @ covA_svdfactors[0].T
+        covB_factor = covB_svdfactors[0] * np.sqrt(covB_svdfactors[1]) @ covB_svdfactors[0].T
+        return (covA_factor, covB_factor)
+
+    def sample_old(self, size=()):
         print("You are using the old method.")
         mean, cov = self._params_todense()
         samples_ravelled = scipy.stats.multivariate_normal.rvs(
