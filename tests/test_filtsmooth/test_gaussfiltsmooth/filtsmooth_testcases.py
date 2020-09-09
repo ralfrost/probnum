@@ -5,8 +5,15 @@ import unittest
 
 import numpy as np
 
-from probnum.filtsmooth import *
-from probnum.prob import *
+from probnum.filtsmooth import (
+    DiscreteGaussianLTIModel,
+    generate_dd,
+    LTISDEModel,
+    generate_cd,
+    DiscreteGaussianModel,
+)
+from probnum.random_variables import Normal
+from tests.testing import NumpyAssertions
 
 __all__ = [
     "CarTrackingDDTestCase",
@@ -15,7 +22,7 @@ __all__ = [
 ]
 
 
-class CarTrackingDDTestCase(unittest.TestCase):
+class CarTrackingDDTestCase(unittest.TestCase, NumpyAssertions):
     """
     Car tracking: Ex. 4.3 in Bayesian Filtering and Smoothing
     """
@@ -34,21 +41,20 @@ class CarTrackingDDTestCase(unittest.TestCase):
     cov = 0.5 * var * np.eye(4)
 
     def setup_cartracking(self):
-        """ """
         self.dynmod = DiscreteGaussianLTIModel(
             dynamat=self.dynamat, forcevec=np.zeros(4), diffmat=self.dynadiff
         )
         self.measmod = DiscreteGaussianLTIModel(
             dynamat=self.measmat, forcevec=np.zeros(2), diffmat=self.measdiff
         )
-        self.initrv = RandomVariable(distribution=Normal(self.mean, self.cov))
+        self.initrv = Normal(self.mean, self.cov)
         self.tms = np.arange(0, 20, self.delta_t)
         self.states, self.obs = generate_dd(
             self.dynmod, self.measmod, self.initrv, self.tms
         )
 
 
-class OrnsteinUhlenbeckCDTestCase(unittest.TestCase):
+class OrnsteinUhlenbeckCDTestCase(unittest.TestCase, NumpyAssertions):
     """
     Ornstein Uhlenbeck process as a test case.
     """
@@ -61,8 +67,6 @@ class OrnsteinUhlenbeckCDTestCase(unittest.TestCase):
     diff = q * np.eye(1)
 
     def setup_ornsteinuhlenbeck(self):
-        """
-        """
         self.dynmod = LTISDEModel(
             driftmatrix=self.drift,
             force=self.force,
@@ -72,19 +76,15 @@ class OrnsteinUhlenbeckCDTestCase(unittest.TestCase):
         self.measmod = DiscreteGaussianLTIModel(
             dynamat=np.eye(1), forcevec=np.zeros(1), diffmat=self.r * np.eye(1)
         )
-        self.initrv = RandomVariable(distribution=Normal(10 * np.ones(1), np.eye(1)))
+        self.initrv = Normal(10 * np.ones(1), np.eye(1))
         self.tms = np.arange(0, 20, self.delta_t)
         self.states, self.obs = generate_cd(
             dynmod=self.dynmod, measmod=self.measmod, initrv=self.initrv, times=self.tms
         )
 
 
-class PendulumNonlinearDDTestCase(unittest.TestCase):
-    """ """
-
+class PendulumNonlinearDDTestCase(unittest.TestCase, NumpyAssertions):
     def setup_pendulum(self):
-        """
-        """
         delta_t = 0.0075
         var = 0.32 ** 2
         g = 9.81
@@ -119,7 +119,7 @@ class PendulumNonlinearDDTestCase(unittest.TestCase):
         initcov = var * np.eye(2)
         self.dynamod = DiscreteGaussianModel(f, lambda t: q, df)
         self.measmod = DiscreteGaussianModel(h, lambda t: self.r, dh)
-        self.initrv = RandomVariable(distribution=Normal(initmean, initcov))
+        self.initrv = Normal(initmean, initcov)
         self.tms = np.arange(0, 4, delta_t)
         self.q = q
         self.states, self.obs = generate_dd(

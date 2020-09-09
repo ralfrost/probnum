@@ -10,8 +10,7 @@ is a Gauss-Markov process.
 import numpy as np
 import scipy.linalg
 from probnum.filtsmooth.statespace.continuous import continuousmodel
-from probnum.prob import RandomVariable
-from probnum.prob.distributions import Normal
+from probnum.random_variables import Normal
 
 __all__ = ["LinearSDEModel", "LTISDEModel"]
 
@@ -25,15 +24,15 @@ class LinearSDEModel(continuousmodel.ContinuousModel):
 
     Parameters
     ----------
-    driftmatrixfct : callable, signature=(t, \*\*kwargs)
+    driftmatrixfct : callable, signature=(t, \\**kwargs)
         This is F = F(t). The evaluations of this function are called
         the drift(matrix) of the SDE.
         Returns np.ndarray with shape=(n, n)
-    forcfct : callable, signature=(t, \*\*kwargs)
+    forcfct : callable, signature=(t, \\**kwargs)
         This is u = u(t). Evaluations of this function are called
         the force(vector) of the SDE.
         Returns np.ndarray with shape=(n,)
-    dispmatrixfct : callable, signature=(t, \*\*kwargs)
+    dispmatrixfct : callable, signature=(t, \\**kwargs)
         This is L = L(t). Evaluations of this function are called
         the dispersion(matrix) of the SDE.
         Returns np.ndarray with shape=(n, s)
@@ -96,20 +95,20 @@ class LinearSDEModel(continuousmodel.ContinuousModel):
 
         By default, we assume that ``randvar`` is Gaussian.
         """
-        if not issubclass(type(randvar.distribution), Normal):
+        if not issubclass(type(randvar), Normal):
             errormsg = (
                 "Closed form solution for Chapman-Kolmogorov "
                 "equations in linear SDE models is only "
                 "available for Gaussian initial conditions."
             )
             raise ValueError(errormsg)
-        mean, covar = randvar.mean(), randvar.cov()
+        mean, covar = randvar.mean, randvar.cov
         time = start
         while time < stop:
             meanincr, covarincr = self._increment(time, mean, covar, **kwargs)
             mean, covar = mean + step * meanincr, covar + step * covarincr
             time = time + step
-        return RandomVariable(distribution=Normal(mean, covar)), None
+        return Normal(mean, covar), None
 
     def _increment(self, time, mean, covar, **kwargs):
         """
@@ -180,20 +179,14 @@ class LTISDEModel(LinearSDEModel):
 
     @property
     def driftmatrix(self):
-        """
-        """
         return self._driftmatrix
 
     @property
     def force(self):
-        """
-        """
         return self._force
 
     @property
     def dispersionmatrix(self):
-        """
-        """
         return self._dispmatrix
 
     def chapmankolmogorov(self, start, stop, step, randvar, **kwargs):
@@ -211,13 +204,13 @@ class LTISDEModel(LinearSDEModel):
         and Eq. 6.41 and Eq. 6.42
         in Applied SDEs.
         """
-        mean, cov = randvar.mean(), randvar.cov()
+        mean, cov = randvar.mean, randvar.cov
         if np.isscalar(mean) and np.isscalar(cov):
             mean, cov = mean * np.ones(1), cov * np.eye(1)
         increment = stop - start
         newmean = self._predict_mean(increment, mean, **kwargs)
         newcov, crosscov = self._predict_covar(increment, cov, **kwargs)
-        return RandomVariable(distribution=Normal(newmean, newcov)), crosscov
+        return Normal(newmean, newcov), crosscov
 
     def _predict_mean(self, h, mean, **kwargs):
         """

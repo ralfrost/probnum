@@ -4,29 +4,29 @@ from initial value problems + state space model to filters.
 """
 
 import numpy as np
-from probnum.filtsmooth import *
+
+from probnum.filtsmooth import ExtendedKalman, UnscentedKalman
 from probnum.filtsmooth.statespace.discrete import DiscreteGaussianModel
-from probnum.prob import RandomVariable
-from probnum.prob.distributions import Normal, Dirac
+from probnum import random_variables as rvs
 
 
 def ivp2ekf0(ivp, prior, evlvar):
     """
     Computes measurement model and initial distribution
     for KF based on IVP and prior.
-    
+
     **Initialdistribution:**
 
     Conditions the initial distribution of the Gaussian filter
     onto the initial values.
 
     - If preconditioning is set to ``False``, it conditions
-      the initial distribution :math:`\mathcal{N}(0, I)`
+      the initial distribution :math:`\\mathcal{N}(0, I)`
       on the initial values :math:`(x_0, f(t_0, x_0), ...)` using
       as many available deri    vatives as possible.
 
     - If preconditioning is set to ``True``, it conditions
-      the initial distribution :math:`\mathcal{N}(0, P P^\\top)`
+      the initial distribution :math:`\\mathcal{N}(0, P P^\\top)`
       on the initial values :math:`(x_0, f(t_0, x_0), ...)` using
       as many available derivatives as possible.
       Note that the projection matrices :math:`H_0` and :math:`H_1`
@@ -35,7 +35,7 @@ def ivp2ekf0(ivp, prior, evlvar):
 
     **Measurement model:**
 
-    Returns a measurement model :math:`\mathcal{N}(g(m), R)`
+    Returns a measurement model :math:`\\mathcal{N}(g(m), R)`
     involving computing the discrepancy
 
     .. math:: g(m) = H_1 m(t) - f(t, H_0 m(t)).
@@ -51,7 +51,7 @@ def ivp2ekf0(ivp, prior, evlvar):
     model, :math:`H_0` and :math:`H_1`
     become :math:`H_0 P^{-1}` and :math:`H_1 P^{-1}` which has
     to be taken into account. In this case,
-    
+
     - EKF0 thinks :math:`J_g(m) = H_1 P^{-1}`
     - EKF1 thinks :math:`J_g(m) = H_1 P^{-1} - J_f(t, H_0  P^{-1} m(t)) (H_0 P^{-1})^\\top`
     - UKF again thinks: ''What is a Jacobian?''
@@ -65,7 +65,7 @@ def ivp2ekf0(ivp, prior, evlvar):
 
     evlvar : float,
         measurement variance; in the literature, this is "R"
-    """
+    """  # pylint: disable=line-too-long
     measmod = _measmod_ekf0(ivp, prior, evlvar)
     initrv = _initialdistribution(ivp, prior)
     return ExtendedKalman(prior, measmod, initrv)
@@ -143,8 +143,7 @@ def ivp2ukf(ivp, prior, evlvar):
 
 
 def _measmod_ukf(ivp, prior, measvar):
-    """
-    """
+
     spatialdim = prior.spatialdim
     h0 = prior.proj2coord(coord=0)
     h1 = prior.proj2coord(coord=1)
@@ -160,17 +159,17 @@ def _measmod_ukf(ivp, prior, measvar):
 
 def _initialdistribution(ivp, prior):
     """
-    Conditions initialdistribution :math:`\mathcal{N}(0, P P^\\top)`
+    Conditions initialdistribution :math:`\\mathcal{N}(0, P P^\\top)`
     on the initial values :math:`(x_0, f(t_0, x_0), ...)` using
     as many available derivatives as possible.
 
     Note that the projection matrices :math:`H_0` and :math:`H_1`
     become :math:`H_0 P^{-1}` and :math:`H_1 P^{-1}`.
     """
-    if not issubclass(type(ivp.initrv.distribution), Normal):
-        if not issubclass(type(ivp.initrv.distribution), Dirac):
+    if not issubclass(type(ivp.initrv), rvs.Normal):
+        if not issubclass(type(ivp.initrv), rvs.Dirac):
             raise RuntimeError("Initial distribution not Normal nor Dirac")
-    x0 = ivp.initialdistribution.mean()
+    x0 = ivp.initialdistribution.mean
     dx0 = ivp.rhs(ivp.t0, x0)
     ddx0 = _ddx(ivp.t0, x0, ivp)
     dddx0 = _dddx(ivp.t0, x0, ivp)
@@ -194,17 +193,16 @@ def _initialdistribution(ivp, prior):
         projmat = np.hstack((h0.T, h1.T, h2.T, h3.T)).T
         data = np.hstack((x0, dx0, ddx0, dddx0))
         _size = 4
-    largecov = np.kron(np.eye(_size), ivp.initialdistribution.cov())
+    largecov = np.kron(np.eye(_size), ivp.initialdistribution.cov)
     s = projmat @ initcov @ projmat.T + largecov
     crosscov = initcov @ projmat.T
     newmean = crosscov @ np.linalg.solve(s, data)
     newcov = initcov - (crosscov @ np.linalg.solve(s.T, crosscov.T)).T
-    return RandomVariable(distribution=Normal(newmean, newcov))
+    return rvs.Normal(newmean, newcov)
 
 
 def _initialdistribution_no_precond(ivp, prior):
-    """ """
-    x0 = ivp.initialdistribution.mean()
+    x0 = ivp.initialdistribution.mean
     dx0 = ivp.rhs(ivp.t0, x0)
     ddx0 = _ddx(ivp.t0, x0, ivp)
     h0 = prior.proj2coord(coord=0)
@@ -221,7 +219,7 @@ def _initialdistribution_no_precond(ivp, prior):
     crosscov = initcov @ projmat.T  # @ np.linalg.inv(s)
     newmean = crosscov @ np.linalg.solve(s, data)
     newcov = initcov - (crosscov @ np.linalg.solve(s, crosscov)).T
-    return RandomVariable(distribution=Normal(newmean, newcov))
+    return rvs.Normal(newmean, newcov)
 
 
 def _ddx(t, x, ivp):

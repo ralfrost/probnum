@@ -10,8 +10,7 @@ import unittest
 
 import numpy as np
 
-from probnum.prob import RandomVariable
-from probnum.prob.distributions import Normal
+from probnum.random_variables import Normal
 from probnum.diffeq.odefiltsmooth import prior
 from tests.testing import NumpyAssertions
 
@@ -46,71 +45,83 @@ AH_21_PRE = np.array([[1, 1, 0.5], [0, 1, 1], [0, 0, 1]])
 
 QH_21_PRE = (
     DIFFCONST ** 2
-    * STEP ** 5
+    * STEP
     * np.array([[1 / 20, 1 / 8, 1 / 6], [1 / 8, 1 / 3, 1 / 2], [1 / 6, 1 / 2, 1]])
 )
 
 
 class TestIBM(unittest.TestCase, NumpyAssertions):
-    """
-    """
-
     def setUp(self):
-        """
-        """
-        self.ibm = prior.IBM(2, 2, DIFFCONST)
+        self.prior = prior.IBM(2, 2, DIFFCONST)
 
     def test_chapmankolmogorov(self):
-        """
-        """
-        mean, cov = np.ones(self.ibm.ndim), np.eye(self.ibm.ndim)
-        initrv = RandomVariable(distribution=Normal(mean, cov))
-        cke, __ = self.ibm.chapmankolmogorov(0.0, STEP, STEP, initrv)
-        self.assertAllClose(AH_22_IBM @ initrv.mean(), cke.mean(), 1e-14)
+        mean, cov = np.ones(self.prior.ndim), np.eye(self.prior.ndim)
+        initrv = Normal(mean, cov)
+        cke, __ = self.prior.chapmankolmogorov(0.0, STEP, STEP, initrv)
+        self.assertAllClose(AH_22_IBM @ initrv.mean, cke.mean, 1e-14)
         self.assertAllClose(
-            AH_22_IBM @ initrv.cov() @ AH_22_IBM.T + QH_22_IBM, cke.cov(), 1e-14
+            AH_22_IBM @ initrv.cov @ AH_22_IBM.T + QH_22_IBM, cke.cov, 1e-14
         )
+
+    def test_chapmankolmogorov_super_comparison(self):
+        """
+        The result of chapmankolmogorov() should be identical to the matrix fraction decomposition technique
+        implemented in LinearSDE, just faster.
+        """
+        # pylint: disable=bad-super-call
+        mean, cov = np.ones(self.prior.ndim), np.eye(self.prior.ndim)
+        initrv = Normal(mean, cov)
+        cke_super, __ = super(type(self.prior), self.prior).chapmankolmogorov(
+            0.0, STEP, STEP, initrv
+        )
+        cke, __ = self.prior.chapmankolmogorov(0.0, STEP, STEP, initrv)
+
+        self.assertAllClose(cke_super.mean, cke.mean, 1e-14)
+        self.assertAllClose(cke_super.cov, cke.cov, 1e-14)
 
 
 class TestIBMPrecond(unittest.TestCase, NumpyAssertions):
-    """
-    """
-
     def setUp(self):
-        """
-        """
-        self.ibm = prior.IBM(
+        self.prior = prior.IBM(
             ordint=2, spatialdim=1, diffconst=DIFFCONST, precond_step=STEP
         )
 
     def test_chapmankolmogorov(self):
-        """
-        """
-        mean, cov = np.ones(self.ibm.ndim), np.eye(self.ibm.ndim)
-        initrv = RandomVariable(distribution=Normal(mean, cov))
-        cke, __ = self.ibm.chapmankolmogorov(0.0, STEP, STEP, initrv)
+        mean, cov = np.ones(self.prior.ndim), np.eye(self.prior.ndim)
+        initrv = Normal(mean, cov)
+        cke, __ = self.prior.chapmankolmogorov(0.0, STEP, STEP, initrv)
 
-        self.assertAllClose(AH_21_PRE @ initrv.mean(), cke.mean(), 1e-14)
+        self.assertAllClose(AH_21_PRE @ initrv.mean, cke.mean, 1e-14)
         self.assertAllClose(
-            AH_21_PRE @ initrv.cov() @ AH_21_PRE.T + QH_21_PRE, cke.cov(), 1e-14
+            AH_21_PRE @ initrv.cov @ AH_21_PRE.T + QH_21_PRE, cke.cov, 1e-14
         )
+
+    def test_chapmankolmogorov_super_comparison(self):
+        """
+        The result of chapmankolmogorov() should be identical to the matrix fraction decomposition technique
+        implemented in LinearSDE, just faster.
+        """
+        # pylint: disable=bad-super-call
+
+        mean, cov = np.ones(self.prior.ndim), np.eye(self.prior.ndim)
+        initrv = Normal(mean, cov)
+        cke_super, __ = super(type(self.prior), self.prior).chapmankolmogorov(
+            0.0, STEP, STEP, initrv
+        )
+        cke, __ = self.prior.chapmankolmogorov(0.0, STEP, STEP, initrv)
+
+        self.assertAllClose(cke_super.mean, cke.mean, 1e-14)
+        self.assertAllClose(cke_super.cov, cke.cov, 1e-14)
 
 
 class TestIOUP(unittest.TestCase, NumpyAssertions):
-    """
-    """
-
     def setUp(self):
-        """
-        """
         driftspeed = np.random.rand()
         self.ibm = prior.IOUP(2, 2, driftspeed, DIFFCONST)
 
     def test_chapmankolmogorov(self):
-        """
-        """
         mean, cov = np.ones(self.ibm.ndim), np.eye(self.ibm.ndim)
-        initrv = RandomVariable(distribution=Normal(mean, cov))
+        initrv = Normal(mean, cov)
         self.ibm.chapmankolmogorov(0.0, STEP, STEP, initrv)
 
     def test_asymptotically_ibm(self):
@@ -131,8 +142,6 @@ class TestMatern(unittest.TestCase, NumpyAssertions):
     """
 
     def setUp(self):
-        """
-        """
         lenscale, diffconst = np.random.rand(), np.random.rand()
         self.mat0 = prior.Matern(0, 1, lenscale, diffconst)
         self.mat1 = prior.Matern(1, 1, lenscale, diffconst)
@@ -163,14 +172,10 @@ class TestMatern(unittest.TestCase, NumpyAssertions):
         self.assertAllClose(self.mat2.driftmatrix[-1, :], expected)
 
     def test_larger_shape(self):
-        """
-        """
         mat2d = prior.Matern(2, 2, 1.0, 1.0)
         self.assertEqual(mat2d.ndim, 2 * (2 + 1))
 
     def test_chapmankolmogorov(self):
-        """
-        """
         mean, cov = np.ones(self.mat1.ndim), np.eye(self.mat1.ndim)
-        initrv = RandomVariable(distribution=Normal(mean, cov))
+        initrv = Normal(mean, cov)
         self.mat1.chapmankolmogorov(0.0, STEP, STEP, initrv)
