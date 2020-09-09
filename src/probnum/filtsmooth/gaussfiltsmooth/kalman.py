@@ -4,9 +4,14 @@ continuous-discrete and discrete-discrete state space models.
 """
 
 import numpy as np
-from probnum.filtsmooth.gaussfiltsmooth.gaussfiltsmooth import *
-from probnum.prob import RandomVariable, Normal
-from probnum.filtsmooth.statespace import *
+from probnum.filtsmooth.gaussfiltsmooth.gaussfiltsmooth import (
+    GaussFiltSmooth,
+    linear_discrete_update,
+)
+from probnum.random_variables import Normal
+from probnum.filtsmooth.statespace import LinearSDEModel, DiscreteGaussianLinearModel
+
+from probnum.filtsmooth.gaussfiltsmooth._utils import is_cont_disc, is_disc_disc
 
 
 class Kalman(GaussFiltSmooth):
@@ -24,9 +29,9 @@ class Kalman(GaussFiltSmooth):
         discrete-discrete Kalman object is created.
         """
         if cls is Kalman:
-            if _cont_disc(dynamod, measmod):
+            if is_cont_disc(dynamod, measmod):
                 return _ContDiscKalman(dynamod, measmod, initrv, **kwargs)
-            if _disc_disc(dynamod, measmod):
+            if is_disc_disc(dynamod, measmod):
                 return _DiscDiscKalman(dynamod, measmod, initrv)
             else:
                 errmsg = (
@@ -36,20 +41,6 @@ class Kalman(GaussFiltSmooth):
                 raise ValueError(errmsg)
         else:
             return super().__new__(cls)
-
-
-def _cont_disc(dynamod, measmod):
-    """Checks whether the state space model is continuous-discrete."""
-    dyna_is_cont = issubclass(type(dynamod), ContinuousModel)
-    meas_is_disc = issubclass(type(measmod), DiscreteModel)
-    return dyna_is_cont and meas_is_disc
-
-
-def _disc_disc(dynamod, measmod):
-    """Checks whether the state space model is discrete-discrete."""
-    dyna_is_disc = issubclass(type(dynamod), DiscreteModel)
-    meas_is_disc = issubclass(type(measmod), DiscreteModel)
-    return dyna_is_disc and meas_is_disc
 
 
 class _ContDiscKalman(Kalman):
@@ -64,11 +55,11 @@ class _ContDiscKalman(Kalman):
         """
         if not issubclass(type(dynamod), LinearSDEModel):
             raise ValueError(
-                "ContinuosDiscreteKalman requires " "a linear dynamic model."
+                "ContinuousDiscreteKalman requires a linear dynamic model."
             )
         if not issubclass(type(measmod), DiscreteGaussianLinearModel):
             raise ValueError(
-                "DiscreteDiscreteKalman requires " "a linear measurement model."
+                "ContinuousDiscreteKalman requires a linear measurement model."
             )
         if "cke_nsteps" in kwargs.keys():
             self.cke_nsteps = kwargs["cke_nsteps"]
@@ -77,12 +68,10 @@ class _ContDiscKalman(Kalman):
         super().__init__(dynamod, measmod, initrv)
 
     def predict(self, start, stop, randvar, **kwargs):
-        """ """
         step = (stop - start) / self.cke_nsteps
         return self.dynamicmodel.chapmankolmogorov(start, stop, step, randvar, **kwargs)
 
     def update(self, time, randvar, data, **kwargs):
-        """ """
         return _discrete_kalman_update(
             time, randvar, data, self.measurementmodel, **kwargs
         )
@@ -108,7 +97,7 @@ class _DiscDiscKalman(Kalman):
 
     def predict(self, start, stop, randvar, **kwargs):
         """Prediction step for discrete-discrete Kalman filtering."""
-        mean, covar = randvar.mean(), randvar.cov()
+        mean, covar = randvar.mean, randvar.cov
         if np.isscalar(mean) and np.isscalar(covar):
             mean, covar = mean * np.ones(1), covar * np.eye(1)
         dynamat = self.dynamicmodel.dynamicsmatrix(start, **kwargs)
@@ -117,7 +106,7 @@ class _DiscDiscKalman(Kalman):
         mpred = dynamat @ mean + forcevec
         ccpred = covar @ dynamat.T
         cpred = dynamat @ ccpred + diffmat
-        return RandomVariable(distribution=Normal(mpred, cpred)), ccpred
+        return Normal(mpred, cpred), ccpred
 
     def update(self, time, randvar, data, **kwargs):
         """Update step of discrete Kalman filtering"""
@@ -128,14 +117,10 @@ class _DiscDiscKalman(Kalman):
 
 def _discrete_kalman_update(time, randvar, data, measurementmodel, **kwargs):
     """Discrete Kalman update."""
-    mpred, cpred = randvar.mean(), randvar.cov()
+    mpred, cpred = randvar.mean, randvar.cov
     if np.isscalar(mpred) and np.isscalar(cpred):
         mpred, cpred = mpred * np.ones(1), cpred * np.eye(1)
     measmat = measurementmodel.dynamicsmatrix(time, **kwargs)
     meascov = measurementmodel.diffusionmatrix(time, **kwargs)
     meanest = measmat @ mpred
-    covest = measmat @ cpred @ measmat.T + meascov
-    ccest = cpred @ measmat.T
-    mean = mpred + ccest @ np.linalg.solve(covest, data - meanest)
-    cov = cpred - ccest @ np.linalg.solve(covest.T, ccest.T)
-    return (RandomVariable(distribution=Normal(mean, cov)), covest, ccest, meanest)
+    return linear_discrete_update(meanest, cpred, data, meascov, measmat, mpred)

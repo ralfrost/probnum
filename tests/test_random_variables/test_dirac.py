@@ -1,11 +1,9 @@
 """Tests for the Dirac distributions."""
-
 import unittest
-from tests.testing import NumpyAssertions
 
 import numpy as np
 
-from probnum import prob
+from probnum import random_variables as rvs
 
 
 class TestDirac(unittest.TestCase):
@@ -22,8 +20,8 @@ class TestDirac(unittest.TestCase):
         for supp in self.supports:
             for sample_size in [1, (), 10, (4,), (3, 2)]:
                 with self.subTest():
-                    s = prob.Dirac(support=supp).sample(size=sample_size)
-                    if sample_size == 1 or sample_size == ():
+                    s = rvs.Dirac(support=supp).sample(size=sample_size)
+                    if sample_size == ():
                         self.assertEqual(np.shape(supp), np.shape(s))
                     elif isinstance(sample_size, tuple):
                         self.assertEqual(sample_size + np.shape(supp), np.shape(s))

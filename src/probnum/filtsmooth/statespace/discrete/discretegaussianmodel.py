@@ -3,8 +3,7 @@ Discrete Gauss-Markov models of the form
 x_{i+1} = N(g(i, x_i), S(i))
 """
 
-from probnum.prob import RandomVariable
-from probnum.prob.distributions import Normal
+from probnum.random_variables import Normal
 from probnum.filtsmooth.statespace.discrete import discretemodel
 
 
@@ -76,7 +75,7 @@ class DiscreteGaussianModel(discretemodel.DiscreteModel):
         """
         dynavl = self.dynamics(time, state, **kwargs)
         diffvl = self.diffusionmatrix(time, **kwargs)
-        rv = RandomVariable(distribution=Normal(dynavl, diffvl))
+        rv = Normal(dynavl, diffvl)
         return rv.sample()
 
     def pdf(self, loc, time, state, **kwargs):
@@ -90,8 +89,6 @@ class DiscreteGaussianModel(discretemodel.DiscreteModel):
 
     @property
     def ndim(self):
-        """
-        """
         return len(self.diffusionmatrix(0.0))
 
 
@@ -101,9 +98,6 @@ class DiscreteGaussianLinearModel(DiscreteGaussianModel):
     """
 
     def __init__(self, dynamatfct, forcefct, diffmatfct):
-        """
-        """
-
         def dynafct(t, x, **kwargs):
             return dynamatfct(t, **kwargs) @ x + forcefct(t, **kwargs)
 
@@ -121,8 +115,6 @@ class DiscreteGaussianLinearModel(DiscreteGaussianModel):
         return self.jacobian(time, None, **kwargs)
 
     def force(self, time, **kwargs):
-        """
-        """
         return self.forcefct(time, **kwargs)
 
 
@@ -133,8 +125,6 @@ class DiscreteGaussianLTIModel(DiscreteGaussianLinearModel):
     """
 
     def __init__(self, dynamat, forcevec, diffmat):
-        """
-        """
         super().__init__(
             lambda t, **kwargs: dynamat,
             lambda t, **kwargs: forcevec,

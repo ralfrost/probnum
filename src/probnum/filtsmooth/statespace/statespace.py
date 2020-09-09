@@ -5,10 +5,7 @@ Utility functions for state space models.
 or discrete-discrete (_dd) models
 """
 
-from abc import ABC, abstractmethod
 import numpy as np
-
-from probnum.prob import RandomVariable, Distribution
 
 
 def generate_cd(dynmod, measmod, initrv, times, _nsteps=5):
@@ -22,7 +19,7 @@ def generate_cd(dynmod, measmod, initrv, times, _nsteps=5):
         Continuous dynamic model.
     measmod : discrete.DiscreteModel instance
         Discrete measurement model.
-    initrv : prob.RandomVariable object
+    initrv : probnum.RandomVariable object
         Random variable according to initial distribution
     times : np.ndarray, shape (n,)
         Timesteps on which the states are to be sampled.
@@ -56,7 +53,7 @@ def generate_dd(dynmod, measmod, initrv, times):
         Discrete dynamic model.
     measmod : discrete.DiscreteModel instance
         Discrete measurement model.
-    initrv : prob.RandomVariable object
+    initrv : probnum.RandomVariable object
         Random variable according to initial distribution
     times : np.ndarray, shape (n,)
         Timesteps on which the states are to be sampled.
