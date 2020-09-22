@@ -1,6 +1,6 @@
 import numpy as np
 from matplotlib import pyplot as plt
-from normal import Normal
+from probnum import random_variables as rvs
 from probnum.linalg.linops import Kronecker
 import time
 
@@ -21,24 +21,24 @@ print("Shapex1",x1.shape," shapex2",x2.shape)
 mean = np.outer(x1,x2)
 #mean = np.random.rand(DIM_V, DIM_W)
 cov = Kronecker(V, W)
-N = Normal(mean, cov)
+N = rvs.Normal(mean, cov)
 print("mean = ", mean)
 print("V = ", V)
 print("W = ", W)
-
+"""
 if isinstance(SIZE, int):
     size_dim = 1
 else:
     size_dim = len(SIZE)
 
-method_names = ['sample_old', 'sample_new_chol', 'sample_new_svd']
-methods = [N.sample_old, N.sample, N.sample]
-params = [[SIZE],[SIZE, 'cholesky'],[SIZE, 'svd']]
+method_names = ['sample_new_chol', 'sample_new_svd']
+methods = [N.sample, N.sample]
+params = [[SIZE],[SIZE],[SIZE]]
 samples = []
 err = []
 sampmean = []
 
-for i in range(3):
+for i in range(2):
     np.random.seed(496)
     print("-----------------------------------------------\n>>>>> ",method_names[i],":")
     start = time.time()
@@ -54,8 +54,8 @@ for i in range(3):
 
 #create graph
 vmax = 1.5
-fig, axes = plt.subplots(nrows=3, ncols=5, figsize=(22.5, 7), sharey=True)
-for j in range(3):
+fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(22.5, 7), sharey=True)
+for j in range(2):
     matdict = {"$\mathbb{E}(\mathsf{X})$": mean, "$V$": V, "$W$": W, method_names[j]: sampmean[j], "absolute error": err[j]}
     for i, (title, rv) in enumerate(matdict.items()):
         axes[j][i].imshow(rv, cmap='bwr', vmin=-vmax, vmax=vmax)
@@ -67,3 +67,4 @@ plt.savefig('samples_mean.png')
 plt.show()
 
 #TODO: create qq-plot to simultaneously test mean and covariance
+"""
