@@ -80,7 +80,7 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
             # Operatorvariate
             (
                 np.array([1.0, -5.0]),
-                linops.MatrixMult(A=np.array([[2.0, 1.0], [1.0, -0.1]])),
+                linops.MatrixMult(A=np.array([[1.0, 2.0], [-0.1, 1.0]])),
             ),
             (
                 linops.MatrixMult(A=np.array([[0.0, -5.0]])),
@@ -409,7 +409,7 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
         )
         samples = rv.sample(size=SIZE)
         sampled_mean = np.mean(samples, axis=(0))
-        self.assertAllClose(sampled_mean, mean, atol=1e-03)
+        self.assertAllClose(sampled_mean, mean, atol=1e-02)
 
     def test_kron_sample_cov(self):
         """Verifies if empiric covariance based on samples of symmetric Kronecker distribution coincides with mathematical covariance."""
