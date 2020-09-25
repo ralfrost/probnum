@@ -566,7 +566,7 @@ class Normal(_random_variable.ContinuousRandomVariable[_ValueType]):
     def _kronecker_cov_decompose(self):
         """Returns depending on type of covariance and if decomposition are already cached a decomposition for covariance. chol=True if cholesky False if svd."""
         if self.__dict__.get('cov_cholesky')!= None: 
-            return ((self.cov_cholesky.A, self.cov_cholesky.B), False)
+            return ((self.cov_cholesky.A, self.cov_cholesky.B), 'chol')
         #TODO: SVD decomposition should be implemented as cached property. Then after checking for cholesky factors in cache check for svd factors in cache
         if isinstance(self._cov.A, linops.LinearOperator) or isinstance(self._cov.B, linops.LinearOperator):
             #TODO: It would be nicer if svd algorithm wasn't randomized 
@@ -575,10 +575,10 @@ class Normal(_random_variable.ContinuousRandomVariable[_ValueType]):
                     scipy.linalg.interpolative.svd(A=self._cov.A, eps_or_k=10**-7),
                     scipy.linalg.interpolative.svd(A=self._cov.B, eps_or_k=10**-7),
                 ),                
-                True,
+                'svd'
             )
         else:
-            return ((self.cov_cholesky.A, self.cov_cholesky.B), False)
+            return ((self.cov_cholesky.A, self.cov_cholesky.B), 'chol')
 
     def _svd_cov_decompose(self, covA_svdfactors, covB_svdfactors):
         """ Returns factors to decompose cov into a product U*U.T using svd decomposition """
@@ -587,9 +587,11 @@ class Normal(_random_variable.ContinuousRandomVariable[_ValueType]):
         return (covA_factor, covB_factor)
 
     def _kronecker_sample(self, size: ShapeType = ()) -> np.ndarray:
-        (cov_factors, svd) = self._kronecker_cov_decompose()
-        if svd:
+        (cov_factors, decomp) = self._kronecker_cov_decompose()
+        if decomp == 'svd':
             cov_factors = self._svd_cov_decompose(cov_factors[0], cov_factors[1])
+        elif decomp != 'chol':
+            raise NotImplementedError("Decomposition must be 'chol' or 'svd'")
 
         # Draw standard normal samples
         if isinstance(size, (int, np.integer)):
@@ -598,7 +600,7 @@ class Normal(_random_variable.ContinuousRandomVariable[_ValueType]):
         else:
             flat_shape = [np.prod(size)]+list(self._mean.shape)
             final_shape = list(size)+list(self._mean.shape)
-        stdnormal_samples = np.random.standard_normal(flat_shape)
+        stdnormal_samples = self._random_state.normal(size=flat_shape)
 
         #TODO: Can be simplified once addition of linear operators and ndarrays is implemented
         #stdnormal_samples is a stack of size 'size' containing matrices of size mean.shape. The @ and + operators automatically perform their operations for each matrix in the stack
@@ -609,15 +611,18 @@ class Normal(_random_variable.ContinuousRandomVariable[_ValueType]):
             return np.array(samples_flat).reshape(size)
 
     def _kronecker_pdf(self, x: _ValueType) -> np.float_:
-        return np.exp( self.logpdf(x) )
+        return np.exp( self._kronecker_logpdf(x) )
 
     def _kronecker_logpdf(self, x: _ValueType) -> np.float_:
         dev = x-self._mean
-        (cov_factors, svd) = self._kronecker_cov_decompose()
-        if svd:
+        (cov_factors, decomp) = self._kronecker_cov_decompose()
+        if decomp == 'svd':
             (logdet_cov, maha) = self._logpdf_calc_svd(dev, cov_factors[0], cov_factors[1])
-        else:
+        elif decomp == 'chol':
             (logdet_cov, maha) = self._logpdf_calc_chol(dev, cov_factors)
+        else:
+            raise NotImplementedError("Decomposition must be 'chol' or 'svd'")
+
         # normalizing constant
         log2pi = np.log(2 * np.pi)
         normconst = np.prod(self._mean.shape)*log2pi + logdet_cov
@@ -686,13 +691,13 @@ class Normal(_random_variable.ContinuousRandomVariable[_ValueType]):
         """Returns depending on type of covariance and if decomposition are already cached a decomposition for covariance. chol=True if cholesky False if svd."""
         if self._cov._ABequal:
             if self.__dict__.get('cov_cholesky')!= None: 
-                return (self.cov_cholesky.A, False)
+                return (self.cov_cholesky.A.todense(), 'chol')
             #TODO: SVD decomposition should be implemented as cached property. Then after checking for cholesky factors in cache check for svd factors in cache
             if isinstance(self._cov.A, linops.LinearOperator):
                 #TODO: It would be nicer if svd algorithm wasn't randomized 
-                return (scipy.linalg.interpolative.svd(A=self._cov.A, eps_or_k=10**-7), True)
+                return (scipy.linalg.interpolative.svd(A=self._cov.A, eps_or_k=10**-7), 'svd')
             else:
-                return (self.cov_cholesky.A, False)
+                return (self.cov_cholesky.A.todense(), 'chol')
         else:
             raise NotImplementedError
 
@@ -701,7 +706,7 @@ class Normal(_random_variable.ContinuousRandomVariable[_ValueType]):
         covA_factor = covA_svdfactor[0] * np.sqrt(covA_svdfactor[1]) @ covA_svdfactor[0].T
         return covA_factor
         
-    def _symmetric_kronecker_identical_factors_sample(
+    def _symmetric_kronecker_identical_factors_sample_old(
         self, size: ShapeType = ()
     ) -> np.ndarray:
         assert isinstance(self._cov, linops.SymmetricKronecker) and self._cov._ABequal
@@ -719,18 +724,52 @@ class Normal(_random_variable.ContinuousRandomVariable[_ValueType]):
         samples_scaled = linops.Symmetrize(dim=n) @ (
             linops.Kronecker(self.cov_cholesky.A,self.cov_cholesky.A) @ stdnormal_samples
         )
-        #samples_scaled = linops.Kronecker(self.cov_cholesky.A,self.cov_cholesky.A) @ linops.Symmetrize(dim=n) @ stdnormal_samples
+        samples_scaled = linops.Kronecker(self.cov_cholesky.A,self.cov_cholesky.A) @ linops.Symmetrize(dim=n) @ stdnormal_samples
 
         # TODO: can we avoid todense here and just return operator samples?
         return self.dense_mean[None, :, :] + samples_scaled.T.reshape(-1, n, n)
 
-    def _symmetric_kronecker_identical_factors_sample2(
+    def _symmetric_kronecker_identical_factors_sample(
+        self, size: ShapeType = ()
+    ) -> np.ndarray:
+        (cov_factor, decomp) = self._symmetric_kronecker_cov_decompose()
+        if decomp == 'svd':
+            cov_factor = self._symmetric_svd_cov_decompose(cov_factor)
+        elif decomp != 'chol':
+            raise NotImplementedError("Decomposition must be 'chol' or 'svd'")
+
+        n = self._cov.A.shape[0]
+        # Draw standard normal samples
+        if isinstance(size, (int, np.integer)):
+            flat_shape = (size, n*n)
+            final_shape = (size, n, n)
+        else:
+            flat_shape = [np.prod(size), n*n]
+            final_shape = list(size)+[n,n]
+
+        stdnormal_samples = self._random_state.normal(size=final_shape)
+        transformed_samples = cov_factor @ stdnormal_samples @ cov_factor.T
+        if isinstance(self._mean, np.ndarray):
+            return self._mean + 0.5*(
+                transformed_samples
+                + self._stacked_transpose(transformed_samples))
+        else:
+            samples_flat = [self._mean + 0.5*(row.reshape(n,n)+row.reshape(n,n).T) for row in transformed_samples.reshape(flat_shape)]
+            return np.array(samples_flat).reshape(size)
+
+    def _stacked_transpose(self, matrix_stack):
+        perm = np.arange(len(matrix_stack.shape))
+        perm[-2], perm[-1] = perm[-1], perm[-2]
+        return np.transpose(matrix_stack, axes=perm)
+
+    def _symmetric_kronecker_identical_factors_sample_wrong(
         self, size: ShapeType = ()
     ) -> np.ndarray:
         #decompose covariance
         (cov_factor, svd) = self._symmetric_kronecker_cov_decompose()
         if svd:
             cov_factor = self._symmetric_svd_cov_decompose(cov_factor)
+            raise NotImplementedError("Decomposition must be 'chol' or 'svd'")
             
         n = self._cov.A.shape[0]
         # Draw standard normal samples
@@ -757,11 +796,13 @@ class Normal(_random_variable.ContinuousRandomVariable[_ValueType]):
     def _symmetric_kronecker_identical_factors_logpdf(self, x: _ValueType) -> np.float_:
         dev = x-self._mean
         #test if factorization already has been calculated 
-        (cov_factor, svd) = self._symmetric_kronecker_cov_decompose()
-        if svd:
+        (cov_factor, decomp) = self._symmetric_kronecker_cov_decompose()
+        if decomp == 'svd':
             (logdet_cov, maha) = self._symmlogpdf_calc_svd(dev, cov_factor)
-        else:
+        elif decomp == 'chol':
             (logdet_cov, maha) = self._symmlogpdf_calc_chol(dev, cov_factor)
+        else:
+            raise NotImplementedError("Decomposition must be 'chol' or 'svd'")
 
         # normalizing constant
         log2pi = np.log(2 * np.pi)
