@@ -5,7 +5,6 @@ import unittest
 import numpy as np
 import scipy.sparse
 import scipy.stats
-import scipy.linalg
 
 import probnum
 from probnum import random_variables as rvs
@@ -186,6 +185,24 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
                 rv = rvs.Normal(mean=mean, cov=cov)
                 density = rv.pdf(mean)
 
+    def test_normal_cdf(self):
+        """Evaluate cdf at random input."""
+        pass
+
+    def test_sample(self):
+        """Draw samples and check all sample dimensions."""
+        for mean, cov in self.normal_params:
+            with self.subTest():
+                # TODO: check dimension of each realization in rv_sample
+                rv = rvs.Normal(mean=mean, cov=cov, random_state=1)
+                rv_sample = rv.sample(size=5)
+                if not np.isscalar(rv.mean):
+                    self.assertEqual(
+                        rv_sample.shape[-rv.ndim :],
+                        mean.shape,
+                        msg="Realization shape does not match mean shape.",
+                    )
+
     def test_sample_zero_cov(self):
         """Draw sample from distribution with zero kernels and check whether it equals the mean."""
         for mean, cov in self.normal_params:
@@ -200,93 +217,105 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
 
     def test_kron_pdf_correct(self):
         """Compare result of pdf with linearoperators as input to multivariate numpy version"""
-        for (dimA,dimB) in [(1,1),(2,3),(11,6)]:
+        for (dimA, dimB) in [(1, 1), (2, 3), (11, 6)]:
             with self.subTest():
-                print("DimA = ",dimA,", DimB = ",dimB)
+                print("DimA = ", dimA, ", DimB = ", dimB)
                 np.random.seed(496)
-                #generate mean and covariance
+                # generate mean and covariance
                 A = np.random.uniform(size=(dimA, dimA))
-                A = A@A.T + dimA*np.eye(dimA)
+                A = A @ A.T + dimA * np.eye(dimA)
                 B = np.random.uniform(size=(dimB, dimB))
-                B = B@B.T + dimB*np.eye(dimB)
+                B = B @ B.T + dimB * np.eye(dimB)
                 mean = np.random.uniform(size=(dimA, dimB))
                 mean_vec = mean.ravel()
                 cov = linops.Kronecker(A, B)
-                cov_dense = np.kron(A,B)
+                cov_dense = np.kron(A, B)
 
-                #create distributions
+                # create distributions
                 dist_op = rvs.Normal(mean=mean, cov=cov)
-                dist_mult = scipy.stats.multivariate_normal(mean=mean_vec, cov=cov_dense)
+                dist_mult = scipy.stats.multivariate_normal(
+                    mean=mean_vec, cov=cov_dense
+                )
 
-                #compute densities
+                # compute densities
                 density_kron = dist_op.pdf(mean)
                 density_mult = dist_mult.pdf(mean_vec)
                 self.assertAlmostEqual(density_kron, density_mult)
 
-
     def test_symm_kron_pdf_correct(self):
         """Compare result of pdf with linearoperators as input to multivariate numpy version"""
-        for dimA in [1,3,6]:
-            print("Dim = ",dimA)
+        for dimA in [1, 3, 6]:
+            print("Dim = ", dimA)
             np.random.seed(496)
-            #generate mean and covariance
+            # generate mean and covariance
             A = np.random.uniform(size=(dimA, dimA))
-            A = A@A.T + dimA*np.eye(dimA)
+            A = A @ A.T + dimA * np.eye(dimA)
             mean = np.random.uniform(size=(dimA, dimA))
             mean_vec = mean.ravel()
             cov = linops.SymmetricKronecker(A=A)
             cov_dense = cov.todense()
 
-            #create distributions
+            # create distributions
             rv_symmkron = rvs.Normal(mean=mean, cov=cov)
             rv_mult = scipy.stats.multivariate_normal(mean=mean_vec, cov=cov_dense)
 
-            #compute densities
+            # compute densities
             density_symmkron = rv_symmkron.pdf(mean)
             density_symmkron = rv_symmkron.pdf(mean)
             density_mult = rv_mult.pdf(mean_vec)
             self.assertAlmostEqual(density_symmkron, density_mult)
 
     def test_kron_detforpdf(self):
-        for (dimA,dimB) in [(1,1),(2,3),(11,6)]:
-            print("DimA = ",dimA,", DimB = ",dimB)
+        for (dimA, dimB) in [(1, 1), (2, 3), (11, 6)]:
+            print("DimA = ", dimA, ", DimB = ", dimB)
             np.random.seed(496)
-            #generate mean and covariance
+            # generate mean and covariance
             A = np.random.uniform(size=(dimA, dimA))
-            A = A@A.T + dimA*np.eye(dimA)
+            A = A @ A.T + dimA * np.eye(dimA)
             B = np.random.uniform(size=(dimB, dimB))
-            B = B@B.T + dimB*np.eye(dimB)
+            B = B @ B.T + dimB * np.eye(dimB)
             mean = np.random.uniform(size=(dimA, dimB))
             mean_vec = mean.ravel()
             cov = linops.Kronecker(A, B)
-            cov_dense = np.kron(A,B)
+            cov_dense = np.kron(A, B)
             rv = rvs.Normal(mean=mean, cov=cov)
-            #compute decompositions
+            # compute decompositions
             cov_chol_factors = (np.linalg.cholesky(A), np.linalg.cholesky(B))
             covA_svd_factors = np.linalg.svd(A)
             covB_svd_factors = np.linalg.svd(B)
             cov_dense = cov.todense()
-            
-            self.assertAlmostEqual(np.log(np.linalg.det(cov_dense)), rv._logabsdet_chol(cov_chol_factors) )
-            self.assertAlmostEqual(np.log(np.linalg.det(cov_dense)), rv._logabsdet_svd(covA_svd_factors, covB_svd_factors) )
+
+            self.assertAlmostEqual(
+                np.log(np.linalg.det(cov_dense)), rv._logabsdet_chol(cov_chol_factors)
+            )
+            self.assertAlmostEqual(
+                np.log(np.linalg.det(cov_dense)),
+                rv._logabsdet_svd(covA_svd_factors, covB_svd_factors),
+            )
 
     def test_symm_kron_detforpdf(self):
-        for dimA in [1,3,6]:
+        for dimA in [1, 3, 6]:
             with self.subTest():
                 np.random.seed(496)
-                #generate mean and covariance
+                # generate mean and covariance
                 A = np.random.uniform(size=(dimA, dimA))
-                A = A@A.T + dimA*np.eye(dimA)
+                A = A @ A.T + dimA * np.eye(dimA)
                 mean = np.random.uniform(size=(dimA, dimA))
                 mean_vec = mean.ravel()
                 cov = linops.SymmetricKronecker(A=A)
                 rv = rvs.Normal(mean=mean, cov=cov)
-                #compute decompositions
+                # compute decompositions
                 cov_chol_factor = np.linalg.cholesky(A)
                 cov_svd_factors = np.linalg.svd(A)
                 cov_dense = cov.todense()
-                self.assertAlmostEqual(np.log(np.linalg.det(cov_dense)), rv._symm_logabsdet_chol(cov_chol_factor) )
-                self.assertAlmostEqual(np.log(np.linalg.det(cov_dense)), rv._symm_logabsdet_svd(cov_svd_factors) )
+                self.assertAlmostEqual(
+                    np.log(np.linalg.det(cov_dense)),
+                    rv._symm_logabsdet_chol(cov_chol_factor),
+                )
+                self.assertAlmostEqual(
+                    np.log(np.linalg.det(cov_dense)),
+                    rv._symm_logabsdet_svd(cov_svd_factors),
+                )
 
     def test_normal_cdf(self):
         """Evaluate cdf at random input."""
@@ -295,8 +324,8 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
     def test_sample_outputdim(self):
         """Draw samples and check all sample dimensions."""
         for mean, cov in self.normal_params:
-            print("mean = ", mean, type(mean),"Cov = ",cov,type(cov))
-            for size in [[3],(2,2),(3,2,3)]:
+            print("mean = ", mean, type(mean), "Cov = ", cov, type(cov))
+            for size in [[3], (2, 2), (3, 2, 3)]:
                 print("~~~> size = ", size)
                 with self.subTest():
                     # TODO: check dimension of each realization in rv_sample
@@ -310,7 +339,7 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
                             list(size),
                             msg="Realization shape does not match size x mean shape.",
                         )
-                    elif isinstance(rv_sample.ravel()[0], linops.LinearOperator): 
+                    elif isinstance(rv_sample.ravel()[0], linops.LinearOperator):
                         print("linop")
                         self.assertEqual(
                             list(rv_sample.shape),
@@ -323,39 +352,43 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
                             msg="Realization shape of elements does not match mean shape.",
                         )
                     else:
-                        print("other: ",type(rv.mean))
+                        print("other: ", type(rv.mean))
                         self.assertEqual(
                             list(rv_sample.shape),
-                            list(size)+list(rv.mean.shape),
+                            list(size) + list(rv.mean.shape),
                             msg="Realization shape does not match size x mean shape.",
                         )
 
     def test_kron_sample_outputdim(self):
         np.random.seed(496)
-        for (DIM_V, DIM_W) in [(1,1),(1,3),(5,4),(10,10,)]:
+        for (DIM_V, DIM_W) in [(1, 1), (1, 3), (5, 4), (10, 10,)]:
             with self.subTest():
                 V = np.random.rand(DIM_V, DIM_V)
                 V = np.dot(V, V.T)
                 W = np.random.rand(DIM_W, DIM_W)
-                W = np.dot(W,W.transpose())
+                W = np.dot(W, W.transpose())
                 cov = linops.Kronecker(V, W)
                 rv = rvs.Normal(
-                    mean=np.eye(DIM_V,DIM_W), cov=cov, cov_cholesky=linops.Kronecker(V,W)
+                    mean=np.eye(DIM_V, DIM_W),
+                    cov=cov,
+                    cov_cholesky=linops.Kronecker(V, W),
                 )
-                rv_sample = rv.sample(size=(15,20))
-                self.assertEqual(rv_sample.shape, (15,20,DIM_V,DIM_W))
+                rv_sample = rv.sample(size=(15, 20))
+                self.assertEqual(rv_sample.shape, (15, 20, DIM_V, DIM_W))
 
     def test_symm_kron_sample_outputdim(self):
         np.random.seed(496)
-        for n in  [1,3,10]:
+        for n in [1, 3, 10]:
             with self.subTest():
                 A = np.random.uniform(size=(n, n))
                 A = 0.5 * (A + A.T) + n * np.eye(n)
                 rv = rvs.Normal(
-                    mean=np.eye(A.shape[0]), cov=linops.SymmetricKronecker(A=A), random_state=1
+                    mean=np.eye(A.shape[0]),
+                    cov=linops.SymmetricKronecker(A=A),
+                    random_state=1,
                 )
-                rv_sample = rv.sample(size=(15,20))
-                self.assertEqual(rv_sample.shape, (15,20,n,n))
+                rv_sample = rv.sample(size=(15, 20))
+                self.assertEqual(rv_sample.shape, (15, 20, n, n))
 
     def test_symm_kron_sample_symmetric(self):
         """Samples from a normal distribution with symmetric Kronecker kernels of two symmetric matrices are
@@ -382,31 +415,27 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
     def test_kron_sample_mean(self):
         """Verifies if empiric covariance based on samples of symmetric Kronecker distribution coincides with mathematical covariance."""
         np.random.seed(496)
-        (DIM_A, DIM_B) = (3,5)
-        SIZE = int(1e06) #if SIZE is tuple you have to change axis at np.mean call
+        (DIM_A, DIM_B) = (3, 5)
+        SIZE = int(1e06)  # if SIZE is tuple you have to change axis at np.mean call
         A = np.random.rand(DIM_A, DIM_A)
         A = np.dot(A, A.T)
         B = np.random.rand(DIM_B, DIM_B)
-        B = np.dot(B,B.transpose())
-        mean = np.outer(np.linspace(0,1,DIM_A), np.linspace(0,2,DIM_B))
-        rv = rvs.Normal(
-            mean=mean, cov=linops.Kronecker(A=A, B=B), random_state=1
-        )
+        B = np.dot(B, B.transpose())
+        mean = np.outer(np.linspace(0, 1, DIM_A), np.linspace(0, 2, DIM_B))
+        rv = rvs.Normal(mean=mean, cov=linops.Kronecker(A=A, B=B), random_state=1)
         samples = rv.sample(size=SIZE)
         sampled_mean = np.mean(samples, axis=(0))
-        self.assertAllClose(sampled_mean, mean,atol=1e-03)
+        self.assertAllClose(sampled_mean, mean, atol=1e-03)
 
     def test_symm_kron_sample_mean(self):
         """Verifies if empiric covariance based on samples of symmetric Kronecker distribution coincides with mathematical covariance."""
         np.random.seed(496)
         n = 5
-        SIZE = int(1e06) #if SIZE is tuple you have to change axis at np.mean call
+        SIZE = int(1e06)  # if SIZE is tuple you have to change axis at np.mean call
         A = np.random.uniform(size=(n, n))
         A = 0.5 * (A + A.T) + n * np.eye(n)
-        mean = np.outer(np.linspace(0,1,n), np.linspace(0.5,3,n))
-        rv = rvs.Normal(
-            mean=mean, cov=linops.SymmetricKronecker(A=A), random_state=1
-        )
+        mean = np.outer(np.linspace(0, 1, n), np.linspace(0.5, 3, n))
+        rv = rvs.Normal(mean=mean, cov=linops.SymmetricKronecker(A=A), random_state=1)
         samples = rv.sample(size=SIZE)
         sampled_mean = np.mean(samples, axis=(0))
         self.assertAllClose(sampled_mean, mean, atol=1e-03)
@@ -414,27 +443,25 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
     def test_kron_sample_cov(self):
         """Verifies if empiric covariance based on samples of symmetric Kronecker distribution coincides with mathematical covariance."""
         np.random.seed(496)
-        (DIM_A, DIM_B) = (3,5)
-        SIZE = int(1e06) #only use onedimensional size for this test
+        (DIM_A, DIM_B) = (3, 5)
+        SIZE = int(1e06)  # only use onedimensional size for this test
         A = np.random.rand(DIM_A, DIM_A)
         A = np.dot(A, A.T)
         B = np.random.rand(DIM_B, DIM_B)
-        B = np.dot(B,B.transpose())
-        mean = np.outer(np.linspace(0,1,DIM_A), np.linspace(0,2,DIM_B))
-        rv = rvs.Normal(
-            mean=mean, cov=linops.Kronecker(A=A, B=B), random_state=1
-        )
+        B = np.dot(B, B.transpose())
+        mean = np.outer(np.linspace(0, 1, DIM_A), np.linspace(0, 2, DIM_B))
+        rv = rvs.Normal(mean=mean, cov=linops.Kronecker(A=A, B=B), random_state=1)
         samples = rv.sample(size=SIZE)
         samples_multivar = np.array([mat.ravel() for mat in samples]).T
         sampled_cov = np.cov(samples_multivar)
-        original_cov = linops.Kronecker(A,B).todense()
+        original_cov = linops.Kronecker(A, B).todense()
         self.assertAllClose(sampled_cov, original_cov, atol=1e-02)
 
     def test_symm_kron_sample_cov(self):
         """Verifies if empiric covariance based on samples of symmetric Kronecker distribution coincides with mathematical covariance."""
         np.random.seed(496)
         n = 3
-        SIZE = int(1e06) #only use onedimensional size for this test
+        SIZE = int(1e06)  # only use onedimensional size for this test
         A = np.random.uniform(size=(n, n))
         A = 0.5 * (A + A.T) + n * np.eye(n)
         rv = rvs.Normal(
@@ -445,7 +472,6 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
         sampled_cov = np.cov(samples_multivar)
         original_cov = linops.SymmetricKronecker(A).todense()
         self.assertAllClose(sampled_cov, original_cov, atol=1e-02)
-
 
     def test_indexing(self):
         """ Indexing with Python integers yields a univariate normal distribution. """
