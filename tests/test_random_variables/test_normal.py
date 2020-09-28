@@ -413,7 +413,7 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
     def test_kron_sample_mean(self):
         """Verifies if empiric covariance based on samples of symmetric Kronecker distribution coincides with mathematical covariance."""
         np.random.seed(496)
-        SIZE = int(1e06) #if SIZE is tuple you have to change axis at np.mean call
+        SIZE = int(1e04) #if SIZE is tuple you have to change axis at np.mean call
         #create distribution
         (DIM_A, DIM_B) = (3,5)
         A = np.random.rand(DIM_A, DIM_A)
@@ -434,7 +434,7 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
     def test_symm_kron_sample_mean(self):
         """Verifies if empiric covariance based on samples of symmetric Kronecker distribution coincides with mathematical covariance."""
         np.random.seed(496)
-        SIZE = int(1e06) #if SIZE is tuple you have to change axis at np.mean call
+        SIZE = int(1e04) #if SIZE is tuple you have to change axis at np.mean call
         #create distribution
         n = 4
         A = np.random.rand(n,n)
@@ -453,7 +453,7 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
     def test_kron_sample_cov(self):
         """Verifies if empiric covariance based on samples of symmetric Kronecker distribution coincides with mathematical covariance."""
         np.random.seed(496)
-        SIZE = int(1e06) #only use onedimensional size for this test
+        SIZE = int(1e04) #only use onedimensional size for this test
         #create distribution
         (DIM_A, DIM_B) = (3,5)
         A = np.random.rand(DIM_A, DIM_A)
@@ -476,7 +476,7 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
     def test_symm_kron_sample_cov(self):
         """Verifies if empiric covariance based on samples of symmetric Kronecker distribution coincides with mathematical covariance."""
         np.random.seed(496)
-        SIZE = int(1e06) #only use onedimensional size for this test
+        SIZE = int(1e04) #only use onedimensional size for this test
         #create distribution
         n = 4
         A = np.random.rand(n,n)
