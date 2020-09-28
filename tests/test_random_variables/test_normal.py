@@ -91,12 +91,12 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
             ),
             (
                 linops.MatrixMult(A=sparsemat.todense()),
-                linops.Kronecker(0.1 * linops.Identity(m), linops.Identity(n)),
+                linops.Kronecker(linops.Identity(m), linops.Identity(n)),
             ),
             (
                 linops.MatrixMult(A=np.random.uniform(size=(2, 2))),
                 linops.SymmetricKronecker(
-                    A=np.array([[1.0, 2.0], [2.0, 1.0]]),
+                    A=np.array([[2.0, 1.0], [1.0, 2.0]]),
                     B=np.array([[5.0, -1.0], [-1.0, 10.0]]),
                 ),
             ),
@@ -181,6 +181,7 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
     def test_normal_pdf(self):
         """Evaluate pdf at random input."""
         for mean, cov in self.normal_params:
+            print("mean = ", mean, type(mean), "Cov = ", cov, type(cov))
             with self.subTest():
                 rv = rvs.Normal(mean=mean, cov=cov)
                 density = rv.pdf(mean)
@@ -261,7 +262,6 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
 
             # compute densities
             density_symmkron = rv_symmkron.pdf(mean)
-            density_symmkron = rv_symmkron.pdf(mean)
             density_mult = rv_mult.pdf(mean_vec)
             self.assertAlmostEqual(density_symmkron, density_mult)
 
@@ -300,13 +300,14 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
                 # generate mean and covariance
                 A = np.random.uniform(size=(dimA, dimA))
                 A = A @ A.T + dimA * np.eye(dimA)
-                mean = np.random.uniform(size=(dimA, dimA))
+                mean = np.random.rand(dimA, dimA)
                 mean_vec = mean.ravel()
                 cov = linops.SymmetricKronecker(A=A)
                 rv = rvs.Normal(mean=mean, cov=cov)
                 # compute decompositions
                 cov_chol_factor = np.linalg.cholesky(A)
                 cov_svd_factors = np.linalg.svd(A)
+
                 cov_dense = cov.todense()
                 self.assertAlmostEqual(
                     np.log(np.linalg.det(cov_dense)),
@@ -361,7 +362,15 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
 
     def test_kron_sample_outputdim(self):
         np.random.seed(496)
-        for (DIM_V, DIM_W) in [(1, 1), (1, 3), (5, 4), (10, 10,)]:
+        for (DIM_V, DIM_W) in [
+            (1, 1),
+            (1, 3),
+            (5, 4),
+            (
+                10,
+                10,
+            ),
+        ]:
             with self.subTest():
                 V = np.random.rand(DIM_V, DIM_V)
                 V = np.dot(V, V.T)
@@ -412,66 +421,103 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
                 ),
             )
 
+    def _mean_tol(self, mean, cov, size):
+        """Returns atol for testing real vs empiric mean with 99,7% limitting accuracy"""
+        n = np.prod(size)
+        max_var = np.max(np.diag(cov))
+        atol = 3 * np.sqrt(max_var / n)
+        return atol
+
+    def _cov_tol(self, cov, size):
+        """Returns atol for testing real vs empiric cov with 99,7% limitting accuracy"""
+        n = np.prod(size)
+        empiric_cov_var = np.outer(np.diag(cov), np.diag(cov)) + cov ** 2
+        max_empiric_cov_var = np.max(empiric_cov_var)
+        atol = 3 * np.sqrt(max_empiric_cov_var / n)
+        return atol
+
     def test_kron_sample_mean(self):
         """Verifies if empiric covariance based on samples of symmetric Kronecker distribution coincides with mathematical covariance."""
         np.random.seed(496)
+        SIZE = int(1e04)  # if SIZE is tuple you have to change axis at np.mean call
+        # create distribution
         (DIM_A, DIM_B) = (3, 5)
-        SIZE = int(1e06)  # if SIZE is tuple you have to change axis at np.mean call
         A = np.random.rand(DIM_A, DIM_A)
         A = np.dot(A, A.T)
         B = np.random.rand(DIM_B, DIM_B)
         B = np.dot(B, B.transpose())
-        mean = np.outer(np.linspace(0, 1, DIM_A), np.linspace(0, 2, DIM_B))
-        rv = rvs.Normal(mean=mean, cov=linops.Kronecker(A=A, B=B), random_state=1)
+        mean = np.outer(np.linspace(0, 1, DIM_A), np.linspace(0.1, 2, DIM_B))
+        cov = linops.Kronecker(A=A, B=B)
+        rv = rvs.Normal(mean=mean, cov=cov, random_state=1)
+        # take random samples
         samples = rv.sample(size=SIZE)
+        # compute empiric mean
         sampled_mean = np.mean(samples, axis=(0))
-        self.assertAllClose(sampled_mean, mean, atol=1e-03)
+        atol = self._mean_tol(mean=mean, cov=cov.todense(), size=SIZE)
+        self.assertAllClose(sampled_mean, mean, atol=atol, rtol=0)
 
     def test_symm_kron_sample_mean(self):
         """Verifies if empiric covariance based on samples of symmetric Kronecker distribution coincides with mathematical covariance."""
         np.random.seed(496)
-        n = 5
-        SIZE = int(1e06)  # if SIZE is tuple you have to change axis at np.mean call
-        A = np.random.uniform(size=(n, n))
+        SIZE = int(1e04)  # if SIZE is tuple you have to change axis at np.mean call
+        # create distribution
+        n = 4
+        A = np.random.rand(n, n)
         A = 0.5 * (A + A.T) + n * np.eye(n)
-        mean = np.outer(np.linspace(0, 1, n), np.linspace(0.5, 3, n))
-        rv = rvs.Normal(mean=mean, cov=linops.SymmetricKronecker(A=A), random_state=1)
+        mean = np.outer(np.linspace(0.1, 1, n), np.linspace(0.1, 2, n))
+        cov = linops.SymmetricKronecker(A=A)
+        rv = rvs.Normal(mean=mean, cov=cov, random_state=1)
+        # take random samples
         samples = rv.sample(size=SIZE)
+        # compute empiric mean
         sampled_mean = np.mean(samples, axis=(0))
-        self.assertAllClose(sampled_mean, mean, atol=1e-02)
+
+        atol = self._mean_tol(mean=mean, cov=cov.todense(), size=SIZE)
+        self.assertAllClose(sampled_mean, mean, atol=atol, rtol=0)
 
     def test_kron_sample_cov(self):
         """Verifies if empiric covariance based on samples of symmetric Kronecker distribution coincides with mathematical covariance."""
         np.random.seed(496)
+        SIZE = int(1e04)  # only use onedimensional size for this test
+        # create distribution
         (DIM_A, DIM_B) = (3, 5)
-        SIZE = int(1e06)  # only use onedimensional size for this test
         A = np.random.rand(DIM_A, DIM_A)
         A = np.dot(A, A.T)
         B = np.random.rand(DIM_B, DIM_B)
         B = np.dot(B, B.transpose())
-        mean = np.outer(np.linspace(0, 1, DIM_A), np.linspace(0, 2, DIM_B))
-        rv = rvs.Normal(mean=mean, cov=linops.Kronecker(A=A, B=B), random_state=1)
+        mean = np.random.rand(DIM_A, DIM_B)
+        cov = linops.Kronecker(A=A, B=B)
+        rv = rvs.Normal(mean=mean, cov=cov, random_state=1)
+        # take random samples
         samples = rv.sample(size=SIZE)
+        # compute empiric and dense covariance
         samples_multivar = np.array([mat.ravel() for mat in samples]).T
         sampled_cov = np.cov(samples_multivar)
-        original_cov = linops.Kronecker(A, B).todense()
-        self.assertAllClose(sampled_cov, original_cov, atol=1e-02)
+        dense_cov = linops.Kronecker(A, B).todense()
+
+        atol = self._cov_tol(cov=dense_cov, size=SIZE)
+        self.assertAllClose(sampled_cov, dense_cov, atol=atol, rtol=0)
 
     def test_symm_kron_sample_cov(self):
         """Verifies if empiric covariance based on samples of symmetric Kronecker distribution coincides with mathematical covariance."""
         np.random.seed(496)
-        n = 3
-        SIZE = int(1e06)  # only use onedimensional size for this test
-        A = np.random.uniform(size=(n, n))
+        SIZE = int(1e04)  # only use onedimensional size for this test
+        # create distribution
+        n = 4
+        A = np.random.rand(n, n)
         A = 0.5 * (A + A.T) + n * np.eye(n)
-        rv = rvs.Normal(
-            mean=np.eye(A.shape[0]), cov=linops.SymmetricKronecker(A=A), random_state=1
-        )
+        mean = np.eye(n)
+        cov = linops.SymmetricKronecker(A=A)
+        rv = rvs.Normal(mean=mean, cov=cov, random_state=1)
+        # take random samples
         samples = rv.sample(size=SIZE)
+        # compute empiric and dense covariance
         samples_multivar = np.array([mat.ravel() for mat in samples]).T
         sampled_cov = np.cov(samples_multivar)
-        original_cov = linops.SymmetricKronecker(A).todense()
-        self.assertAllClose(sampled_cov, original_cov, atol=1e-02)
+        dense_cov = linops.SymmetricKronecker(A).todense()
+
+        atol = self._cov_tol(cov=dense_cov, size=SIZE)
+        self.assertAllClose(sampled_cov, dense_cov, atol=atol, rtol=0)
 
     def test_indexing(self):
         """ Indexing with Python integers yields a univariate normal distribution. """
