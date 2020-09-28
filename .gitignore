@@ -62,8 +62,9 @@ benchmarks/.asv/*
 benchmarks/probnum/*
 
 
-## IDEs ##
-# VSCODE
+######### IDEs #########
+
+# VSCode
 .vscode
 visualstudio.code-workspace
 

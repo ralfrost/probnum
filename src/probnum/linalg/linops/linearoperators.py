@@ -442,8 +442,14 @@ class ScalarMult(LinearOperator):
     def _matvec(self, x):
         return self.scalar * x
 
+    def _rmatvec(self, x):
+        return np.conj(self.scalar) * x
+
     def _matmat(self, X):
         return self.scalar * X
+
+    def _rmatmat(self, X):
+        return np.conj(self.scalar) * X
 
     def todense(self):
         return np.eye(self.shape[0]) * self.scalar
@@ -491,6 +497,18 @@ class Identity(ScalarMult):
             _shape = shape
         # Initiator of super class
         super().__init__(shape=_shape, scalar=1.0)
+
+    def _matvec(self, x):
+        return x
+
+    def _rmatvec(self, x):
+        return x
+
+    def _matmat(self, x):
+        return x
+
+    def _rmatmat(self, x):
+        return x
 
     def todense(self):
         return np.eye(self.shape[0])
