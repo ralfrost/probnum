@@ -752,9 +752,9 @@ class Normal(_random_variable.ContinuousRandomVariable[_ValueType]):
         dev = linops.aslinop(x-self._mean).todense()
         (cov_factor, decomp) = self._symmetric_kronecker_cov_decompose()
         if decomp == 'svd':
-            (logdet_cov, maha) = self._symmlogpdf_calc_svd(dev, cov_factor)
+            (logdet_cov, maha) = self._symm_logpdf_calc_svd(dev, cov_factor)
         elif decomp == 'chol':
-            (logdet_cov, maha) = self._symmlogpdf_calc_chol(dev, cov_factor)
+            (logdet_cov, maha) = self._symm_logpdf_calc_chol(dev, cov_factor)
         else:
             raise NotImplementedError("Decomposition must be 'chol' or 'svd'")
 
