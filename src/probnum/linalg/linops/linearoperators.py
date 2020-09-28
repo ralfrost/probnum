@@ -503,11 +503,13 @@ class Identity(ScalarMult):
 
     def _rmatvec(self, x):
         return x
+
     def _matmat(self, x):
         return x
 
     def _rmatmat(self, x):
         return x
+
     def todense(self):
         return np.eye(self.shape[0])
 
