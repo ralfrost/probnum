@@ -190,20 +190,6 @@ class NormalTestCase(unittest.TestCase, NumpyAssertions):
         """Evaluate cdf at random input."""
         pass
 
-    def test_sample(self):
-        """Draw samples and check all sample dimensions."""
-        for mean, cov in self.normal_params:
-            with self.subTest():
-                # TODO: check dimension of each realization in rv_sample
-                rv = rvs.Normal(mean=mean, cov=cov, random_state=1)
-                rv_sample = rv.sample(size=5)
-                if not np.isscalar(rv.mean):
-                    self.assertEqual(
-                        rv_sample.shape[-rv.ndim :],
-                        mean.shape,
-                        msg="Realization shape does not match mean shape.",
-                    )
-
     def test_sample_zero_cov(self):
         """Draw sample from distribution with zero kernels and check whether it equals the mean."""
         for mean, cov in self.normal_params:
