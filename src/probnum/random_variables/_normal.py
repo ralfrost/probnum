@@ -625,7 +625,7 @@ class Normal(_random_variable.ContinuousRandomVariable[_ValueType]):
         return np.exp(self._kronecker_logpdf(x))
 
     def _kronecker_logpdf(self, x: _ValueType) -> np.float_:
-        dev = linops.aslinop(x - self._mean).todense()
+        dev = (linops.aslinop(x) - linops.aslinop(self._mean)).todense()
         (cov_factors, decomp) = self._kronecker_cov_decompose()
         if decomp == "svd":
             (logdet_cov, maha) = self._logpdf_calc_svd(
@@ -772,7 +772,7 @@ class Normal(_random_variable.ContinuousRandomVariable[_ValueType]):
 
     def _symmetric_kronecker_identical_factors_logpdf(self, x: _ValueType) -> np.float_:
 
-        dev = linops.aslinop(x - self._mean).todense()
+        dev = (linops.aslinop(x) - linops.aslinop(self._mean)).todense()
         (cov_factor, decomp) = self._symmetric_kronecker_cov_decompose()
         if decomp == "svd":
             (logdet_cov, maha) = self._symm_logpdf_calc_svd(dev, cov_factor)
